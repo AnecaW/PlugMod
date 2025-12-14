@@ -1,0 +1,127 @@
+# ==================================================
+# IDENTITEIT (IMMUTABLE NA RELEASE)
+# ==================================================
+id: example-module
+name: Example Module
+description: ""
+version: 1.0.0
+
+created-at: 2025-09-01T12:00:00Z
+updated-at: 2025-09-01T12:00:00Z
+
+# ==================================================
+# AUTEUR & ORGANISATIE
+# ==================================================
+author:
+  name: ""
+  id: ""
+  email: ""
+  website: ""
+  discord: ""
+
+organization:
+  name: ""
+  website: ""
+
+license: ""
+source-url: ""
+issue-tracker: ""
+
+# ==================================================
+# TECHNISCH
+# ==================================================
+main: com.example.module.Main
+api-version: 1
+language: java
+
+load:
+  phase: startup              # startup | post-world | manual
+  priority: normal            # low | normal | high
+  hard-depend: []
+  soft-depend: []
+
+capabilities:
+  enable: true
+  disable: true
+  hot-reload: true
+  persistent-state: true
+
+# ==================================================
+# DATA & CONFIG
+# ==================================================
+data:
+  folder: example-module
+  defaults:
+    copy-on-first-load: true
+    files:
+      - config.yml
+      - data.yml
+
+  save:
+    auto-save: true
+    interval-seconds: 60
+    save-on-disable: true
+
+config:
+  main: config.yml
+  format: yaml
+  reloadable: true
+
+# ==================================================
+# WEBSITE / DASHBOARD
+# ==================================================
+website:
+  enabled: true
+  folder: website
+  entry: index.html
+  title: Example Module
+  api-prefix: /api/modules/example-module
+
+# ==================================================
+# COMMANDS (VOOR LATER)
+# ==================================================
+commands:
+  enabled: false
+  list: []
+
+# ==================================================
+# PERMISSIONS (VOOR LATER)
+# ==================================================
+permissions:
+  enabled: false
+  nodes: {}
+
+# ==================================================
+# PERFORMANCE
+# ==================================================
+performance:
+  heavy-module: false
+  async-safe: true
+  max-async-tasks: 10
+
+# ==================================================
+# COMPATIBILITEIT
+# ==================================================
+compatibility:
+  minecraft:
+    min: 1.20
+    max: 1.21.99
+  paper: true
+  folia: false
+
+# ==================================================
+# SECURITY / VERIFICATION (NU NOG SOFT)
+# ==================================================
+verification:
+  method: signature           # none | signature | registry
+  issuer: PlugModCore
+  key-id: pmc-main-2025
+  proof-file: verification.proof
+
+  signed-fields:
+    - id
+    - main
+    - api-version
+    - author.name
+
+  allow-if-unverified: true

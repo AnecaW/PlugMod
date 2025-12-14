@@ -1,0 +1,7 @@
+name: PlugModCore
+version: '1.0-SNAPSHOT'
+main: org.wannes.plugModCore.PlugModCore
+api-version: '1.21'
+load: STARTUP
+authors: [ Wannes Aneca ]
+description: PlugModCore
