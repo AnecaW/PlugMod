@@ -78,19 +78,47 @@ public class WebServer extends NanoHTTPD {
        DASHBOARD
        ========================= */
     private Response showDashboard() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<h1>PlugModCore Dashboard</h1>\n");
+        sb.append("<form id=\"uploadForm\" method=\"post\" action=\"/modules/upload\" enctype=\"multipart/form-data\">\n");
+        sb.append("  <input type=\"file\" name=\"file\" accept=\".jar\" required />\n");
+        sb.append("  <button type=\"button\" id=\"uploadBtn\">Upload module</button>\n");
+        sb.append("</form>\n");
+        sb.append("<p><a href=\"/modules\">Bekijk modules</a></p>\n");
+        sb.append("<script>\n");
+        sb.append("(function(){\n");
+        sb.append("  const form = document.getElementById('uploadForm');\n");
+        sb.append("  const btn = document.getElementById('uploadBtn');\n");
+        sb.append("  async function doUpload(){\n");
+        sb.append("    const fd = new FormData(form);\n");
+        sb.append("    try{\n");
+        sb.append("      const res = await fetch('/modules/upload', { method: 'POST', body: fd });\n");
+        sb.append("      let contentType = res.headers.get('content-type') || '';\n");
+        sb.append("      if (contentType.includes('application/json')) {\n");
+        sb.append("        const data = await res.json();\n");
+        sb.append("        if (data.success) {\n");
+        sb.append("          alert('Upload geslaagd! Internal ID: ' + data.internalId + '\\n' + (data.message || ''));\n");
+        sb.append("          form.reset();\n");
+        sb.append("        } else {\n");
+        sb.append("          alert('Upload mislukt: ' + (data.message || 'Onbekende fout'));\n");
+        sb.append("        }\n");
+        sb.append("      } else {\n");
+        sb.append("        const text = await res.text();\n");
+        sb.append("        alert('Response: ' + text);\n");
+        sb.append("      }\n");
+        sb.append("    }catch(err){\n");
+        sb.append("      alert('Upload mislukt: ' + err.message);\n");
+        sb.append("    }\n");
+        sb.append("  }\n");
+        sb.append("  btn.addEventListener('click', function(e){ e.preventDefault(); doUpload(); });\n");
+        sb.append("  form.addEventListener('submit', function(e){ e.preventDefault(); });\n");
+        sb.append("})();\n");
+        sb.append("</script>\n");
+
         return newFixedLengthResponse(
                 Response.Status.OK,
                 "text/html",
-                """
-                <h1>PlugModCore Dashboard</h1>
-
-                <form method="post" action="/modules/upload" enctype="multipart/form-data">
-                    <input type="file" name="file" accept=".jar" required />
-                    <button type="submit">Upload module</button>
-                </form>
-
-                <p><a href="/modules">Bekijk modules</a></p>
-                """
+                sb.toString()
         );
     }
 
@@ -161,18 +189,20 @@ public class WebServer extends NanoHTTPD {
                 // Log to server console
                 plugin.getLogger().info("Module uploaded: " + internalId + " (" + originalFileName + ")");
 
+            String json = "{\"success\":true,\"internalId\":\"" + internalId + "\",\"message\":\"Module geüpload\"}";
             return newFixedLengthResponse(
                     Response.Status.OK,
-                    "text/plain",
-                    "Module geüpload. Internal ID: " + internalId
+                    "application/json",
+                    json
             );
 
         } catch (Exception e) {
             e.printStackTrace();
+            String json = "{\"success\":false,\"message\":\"Upload mislukt: " + escapeJson(e.getMessage()) + "\"}";
             return newFixedLengthResponse(
                     Response.Status.INTERNAL_ERROR,
-                    "text/plain",
-                    "Upload mislukt: " + e.getMessage()
+                    "application/json",
+                    json
             );
         }
     }
@@ -267,11 +297,17 @@ public class WebServer extends NanoHTTPD {
        HELPERS
        ========================= */
     private Response badRequest(String message) {
+        String json = "{\"success\":false,\"message\":\"" + escapeJson(message) + "\"}";
         return newFixedLengthResponse(
                 Response.Status.BAD_REQUEST,
-                "text/plain",
-                message
+                "application/json",
+                json
         );
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
     }
 
     private Response enableModule(String uri) {
