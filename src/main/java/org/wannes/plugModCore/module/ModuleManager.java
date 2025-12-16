@@ -144,7 +144,13 @@ public class ModuleManager {
 
         try {
             Module instance = (Module) module.getModuleInstance();
-            instance.onEnable();
+            ModuleContextImpl context = new ModuleContextImpl(
+                    module,
+                    new File(modulesDir.getParentFile(), "module-data")
+            );
+
+            module.setContext(context);
+            instance.onEnable(context);
             module.setState(ModuleState.ENABLED);
 
         } catch (Exception e) {

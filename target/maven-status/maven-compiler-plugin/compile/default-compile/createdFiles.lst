@@ -5,6 +5,7 @@ org\wannes\plugModCore\web\routes\UploadRoute.class
 org\wannes\plugModCore\module\ModuleClassLoader.class
 org\wannes\plugModCore\util\YamlUtils.class
 org\wannes\plugModCore\module\ModuleManager.class
+org\wannes\plugModCore\module\ModuleContextImpl.class
 org\wannes\plugModCore\PlugModCore.class
 org\wannes\plugModCore\util\FileUtils.class
 org\wannes\plugModCore\config\SecurityConfig.class

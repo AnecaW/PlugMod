@@ -31,4 +31,12 @@ public class ModuleContainer {
 
     public Object getModuleInstance() { return moduleInstance; }
     public void setModuleInstance(Object instance) { this.moduleInstance = instance; }
+    private ModuleContextImpl context;
+    public ModuleContextImpl getContext() {
+        return context;
+    }
+
+    public void setContext(ModuleContextImpl context) {
+        this.context = context;
+    }
 }
