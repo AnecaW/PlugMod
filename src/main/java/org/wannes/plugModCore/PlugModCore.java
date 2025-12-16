@@ -6,6 +6,7 @@ import org.wannes.plugModCore.config.CoreConfig;
 import org.wannes.plugModCore.config.SecurityConfig;
 import org.wannes.plugModCore.module.ModuleManager;
 import org.wannes.plugModCore.web.WebServer;
+import org.wannes.plugModCore.security.RegistryManager;
 
 import java.io.File;
 
@@ -16,6 +17,7 @@ public class PlugModCore extends JavaPlugin {
 
     private WebServer webServer;
     private ModuleManager moduleManager;
+    private RegistryManager registryManager;
 
     @Override
     public void onEnable() {
@@ -56,6 +58,7 @@ public class PlugModCore extends JavaPlugin {
 
         getLogger().info("Modules gevonden: " + moduleManager.getModules().size());
         getLogger().info("Main classes geladen.");
+        registryManager = new RegistryManager(this);
 
         /* =========================
            5. WEBSERVER
@@ -94,6 +97,10 @@ public class PlugModCore extends JavaPlugin {
         if (!outFile.exists()) {
             saveResource(resourcePath, false);
         }
+    }
+
+    public RegistryManager getRegistryManager() {
+        return registryManager;
     }
 
     private void startWebServer() {

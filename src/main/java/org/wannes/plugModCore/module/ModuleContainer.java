@@ -39,4 +39,14 @@ public class ModuleContainer {
     public void setContext(ModuleContextImpl context) {
         this.context = context;
     }
+
+    private String internalId;
+
+    public String getInternalId() {
+        return internalId;
+    }
+
+    public void setInternalId(String internalId) {
+        this.internalId = internalId;
+    }
 }

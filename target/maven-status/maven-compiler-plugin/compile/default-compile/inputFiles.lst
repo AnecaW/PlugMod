@@ -11,10 +11,13 @@ C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\mod
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleState.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\PlugModCore.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\security\PublicKeyRegistry.java
+C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\security\RegistryManager.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\security\SecurityManager.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\security\VerificationResult.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\security\VerificationStatus.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\util\FileUtils.java
+C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\util\HashUtils.java
+C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\util\IdUtils.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\util\JarUtils.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\util\YamlUtils.java
 C:\Users\wanne\IdeaProjects\PlugModCore\src\main\java\org\wannes\plugModCore\web\routes\ModuleRoute.java

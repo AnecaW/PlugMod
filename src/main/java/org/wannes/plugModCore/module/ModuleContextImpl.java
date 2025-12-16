@@ -14,7 +14,7 @@ public class ModuleContextImpl implements ModuleContext {
     public ModuleContextImpl(ModuleContainer module, File baseDataFolder) {
         this.module = module;
 
-        this.dataFolder = new File(baseDataFolder, module.getInfo().id);
+        this.dataFolder = new File(baseDataFolder, module.getInternalId());
         this.dataFolder.mkdirs();
 
         this.logger = Logger.getLogger(

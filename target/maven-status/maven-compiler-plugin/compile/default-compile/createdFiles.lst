@@ -14,11 +14,14 @@ org\wannes\plugModCore\web\WebServer.class
 org\wannes\plugModCore\config\ConfigLoader.class
 org\wannes\plugModCore\security\SecurityManager.class
 org\wannes\plugModCore\module\Module.class
+org\wannes\plugModCore\util\IdUtils.class
 org\wannes\plugModCore\web\routes\RootRoute.class
 org\wannes\plugModCore\web\WebContext.class
 org\wannes\plugModCore\config\CoreConfig.class
 org\wannes\plugModCore\module\ModuleContext.class
+org\wannes\plugModCore\security\RegistryManager.class
 org\wannes\plugModCore\web\routes\ModuleRoute.class
 org\wannes\plugModCore\security\VerificationResult.class
 org\wannes\plugModCore\security\VerificationStatus.class
+org\wannes\plugModCore\util\HashUtils.class
 org\wannes\plugModCore\module\ModuleInfo.class

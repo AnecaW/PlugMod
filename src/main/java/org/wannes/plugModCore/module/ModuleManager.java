@@ -35,7 +35,11 @@ public class ModuleManager {
         for (File file : files) {
             ModuleContainer container = new ModuleContainer(file);
 
-            // 1. Lees module.info.yml
+            // internalId = bestandsnaam zonder ".jar"
+            String name = file.getName();
+            String internalId = name.substring(0, name.length() - 4);
+            container.setInternalId(internalId);
+
             ModuleInfo info = readModuleInfo(file);
             container.setInfo(info);
 
@@ -45,7 +49,6 @@ public class ModuleManager {
                 continue;
             }
 
-            // 2. Info ok → LOADED
             container.setState(ModuleState.LOADED);
             modules.add(container);
         }

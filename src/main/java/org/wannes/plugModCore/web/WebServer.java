@@ -91,7 +91,7 @@ public class WebServer extends NanoHTTPD {
             Map<String, String> files = new HashMap<>();
             session.parseBody(files);
 
-            // Originele bestandsnaam
+            // Originele bestandsnaam (alleen informatief)
             String originalFileName = session.getParms().get("file");
             if (originalFileName == null) {
                 return badRequest("Geen bestand ontvangen");
@@ -109,19 +109,47 @@ public class WebServer extends NanoHTTPD {
 
             File tempFile = new File(tempFilePath);
 
+            // Modules map
             File modulesDir = new File(plugin.getDataFolder(), "modules");
             modulesDir.mkdirs();
 
-            File target = new File(modulesDir, originalFileName);
-            Files.copy(tempFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        /* =========================
+           1. GENEREER UNIEKE INTERNAL ID
+           ========================= */
+            String internalId;
+            do {
+                internalId = org.wannes.plugModCore.util.IdUtils.newInternalId(12);
+            } while (plugin.getRegistryManager().exists(internalId));
 
-            // Na upload opnieuw scannen
+        /* =========================
+           2. SLA JAR OP ALS <internalId>.jar
+           ========================= */
+            File target = new File(modulesDir, internalId + ".jar");
+            Files.copy(
+                    tempFile.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+            );
+
+        /* =========================
+           3. HASH + REGISTRY ENTRY
+           ========================= */
+            String sha256 = org.wannes.plugModCore.util.HashUtils.sha256(target);
+            plugin.getRegistryManager().registerNew(
+                    internalId,
+                    originalFileName,
+                    sha256
+            );
+
+        /* =========================
+           4. MODULES OPNIEUW SCANNEN
+           ========================= */
             plugin.getModuleManager().scanModules();
 
             return newFixedLengthResponse(
                     Response.Status.OK,
                     "text/plain",
-                    "Module geüpload: " + originalFileName
+                    "Module geüpload. Internal ID: " + internalId
             );
 
         } catch (Exception e) {
@@ -129,7 +157,7 @@ public class WebServer extends NanoHTTPD {
             return newFixedLengthResponse(
                     Response.Status.INTERNAL_ERROR,
                     "text/plain",
-                    "Upload mislukt"
+                    "Upload mislukt: " + e.getMessage()
             );
         }
     }
@@ -144,10 +172,16 @@ public class WebServer extends NanoHTTPD {
         for (ModuleContainer module : plugin.getModuleManager().getModules()) {
 
             html.append("<li>")
+                    // Toon originele bestandsnaam (optioneel)
                     .append(module.getFileName())
                     .append(" (")
                     .append(module.getState())
                     .append(")");
+
+            // 👉 INTERNAL ID (belangrijk)
+            html.append(" <small style='color:gray;'>[")
+                    .append(module.getInternalId())
+                    .append("]</small>");
 
             // Enable knop
             if (module.getState() == ModuleState.DISABLED) {
