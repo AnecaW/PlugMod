@@ -40,6 +40,14 @@ public class RegistryManager {
         save();
     }
 
+    public synchronized void unregister(String internalId) {
+        String base = "modules." + internalId;
+        if (yaml.contains(base)) {
+            yaml.set(base, null);
+            save();
+        }
+    }
+
     public synchronized void save() {
         try {
             yaml.save(file);

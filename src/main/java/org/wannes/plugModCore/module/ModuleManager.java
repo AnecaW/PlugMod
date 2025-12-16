@@ -2,6 +2,7 @@ package org.wannes.plugModCore.module;
 
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.wannes.plugModCore.api.Module;
+import org.wannes.plugModCore.security.RegistryManager;
 
 import java.io.File;
 import java.io.InputStream;
@@ -17,10 +18,12 @@ public class ModuleManager {
 
     private final File modulesDir;
     private final List<ModuleContainer> modules = new ArrayList<>();
+    private final RegistryManager registryManager;
 
-    public ModuleManager(File dataFolder) {
+    public ModuleManager(File dataFolder, RegistryManager registryManager) {
         this.modulesDir = new File(dataFolder, "modules");
         modulesDir.mkdirs();
+        this.registryManager = registryManager;
     }
 
     /* =========================
@@ -49,50 +52,106 @@ public class ModuleManager {
                 continue;
             }
 
-            container.setState(ModuleState.LOADED);
+            // After upload we keep modules in UPLOADED state until explicitly loaded
+            container.setState(ModuleState.UPLOADED);
             modules.add(container);
         }
-
-        // 3. Main classes laden
-        loadMainClasses();
     }
 
     /* =========================
-       MAIN CLASS LOADING
+       LOAD / UNLOAD SINGLE MODULE
        ========================= */
-    private void loadMainClasses() {
-        for (ModuleContainer module : modules) {
+    public void loadModule(ModuleContainer module) {
+        if (module.getState() != ModuleState.UPLOADED) return;
 
-            if (module.getState() != ModuleState.LOADED) continue;
-            ModuleInfo info = module.getInfo();
+        ModuleInfo info = module.getInfo();
 
-            try {
-                URL jarUrl = module.getFile().toURI().toURL();
+        try {
+            URL jarUrl = module.getFile().toURI().toURL();
 
-                ModuleClassLoader classLoader = new ModuleClassLoader(
-                        jarUrl,
-                        this.getClass().getClassLoader()
-                );
+            ModuleClassLoader classLoader = new ModuleClassLoader(
+                    jarUrl,
+                    this.getClass().getClassLoader()
+            );
 
-                Class<?> mainClass = classLoader.loadClass(info.mainClass);
+            Class<?> mainClass = classLoader.loadClass(info.mainClass);
 
-                if (!Module.class.isAssignableFrom(mainClass)) {
-                    throw new IllegalStateException("Main class implementeert Module interface niet");
-                }
+            if (!Module.class.isAssignableFrom(mainClass)) {
+                throw new IllegalStateException("Main class implementeert Module interface niet");
+            }
 
-                Module instance = (Module) mainClass
-                        .getDeclaredConstructor()
-                        .newInstance();
+            Module instance = (Module) mainClass
+                    .getDeclaredConstructor()
+                    .newInstance();
 
-                module.setClassLoader(classLoader);
-                module.setModuleInstance(instance);
-                module.setState(ModuleState.DISABLED);
+            module.setClassLoader(classLoader);
+            module.setModuleInstance(instance);
+            module.setState(ModuleState.DISABLED);
 
-            } catch (Exception e) {
-                module.setState(ModuleState.FAILED);
-                info.error = "Main class laden faalde: " + e.getMessage();
+        } catch (Exception e) {
+            module.setState(ModuleState.FAILED);
+            info.error = "Main class laden faalde: " + e.getMessage();
+        }
+    }
+
+    public void unloadModule(ModuleContainer module) {
+        // Prevent unloading while enabled
+        if (module.getState() == ModuleState.ENABLED) return;
+
+        try {
+            if (module.getContext() != null) {
+                // nothing to call on context, just drop ref
+                module.setContext(null);
+            }
+
+            if (module.getClassLoader() != null) {
+                try {
+                    module.getClassLoader().close();
+                } catch (Exception ignored) {}
+                module.setClassLoader(null);
+            }
+
+            module.setModuleInstance(null);
+            module.setState(ModuleState.UPLOADED);
+
+        } catch (Exception e) {
+            module.setState(ModuleState.FAILED);
+        }
+    }
+
+    public void deleteModule(ModuleContainer module) {
+        // Ensure unloaded
+        if (module.getState() == ModuleState.ENABLED) return;
+
+        unloadModule(module);
+
+        // Delete jar
+        try {
+            module.getFile().delete();
+        } catch (Exception ignored) {}
+
+        // Delete data folder
+        File dataBase = new File(modulesDir.getParentFile(), "module-data");
+        File moduleData = new File(dataBase, module.getInternalId());
+        if (moduleData.exists()) {
+            // best-effort recursive delete
+            deleteRecursive(moduleData);
+        }
+
+        // Remove registry entry
+        if (registryManager != null) {
+            registryManager.unregister(module.getInternalId());
+        }
+    }
+
+    private void deleteRecursive(File f) {
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) {
+                for (File c : children) deleteRecursive(c);
             }
         }
+        try { f.delete(); } catch (Exception ignored) {}
     }
 
     /* =========================

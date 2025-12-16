@@ -50,15 +50,21 @@ public class PlugModCore extends JavaPlugin {
         getLogger().info("Web enabled: " + coreConfig.webEnabled);
         getLogger().info("Security enabled: " + securityConfig.securityEnabled);
 
-        /* =========================
-           4. MODULE MANAGER
-           ========================= */
-        moduleManager = new ModuleManager(getDataFolder());
+          /* =========================
+              4. REGISTRY + MODULE MANAGER
+              ========================= */
+          registryManager = new RegistryManager(this);
+
+          moduleManager = new ModuleManager(getDataFolder(), registryManager);
         moduleManager.scanModules();
 
+        if (coreConfig != null && coreConfig.autoLoadModules) {
+            for (var m : moduleManager.getModules()) {
+                moduleManager.loadModule(m);
+            }
+        }
+
         getLogger().info("Modules gevonden: " + moduleManager.getModules().size());
-        getLogger().info("Main classes geladen.");
-        registryManager = new RegistryManager(this);
 
         /* =========================
            5. WEBSERVER
