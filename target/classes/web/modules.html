@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PlugModCore Modules</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 16px; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 6px 0; }
+    form { display: inline; }
+    button { margin-left: 6px; }
+  </style>
+</head>
+<body>
+
+<div id="module-list">
+  {{MODULE_LIST}}
+</div>
+
+<p><a href="/">Terug naar dashboard</a> | <a href="/modules">Refresh</a></p>
+
+<script>
+// Intercept forms with class 'module-action' and perform POST via fetch.
+// After action, poll /modules for the updated state of the affected module and
+// replace only the module list fragment so the rest of the page remains intact.
+
+document.addEventListener('submit', async function(e){
+  const form = e.target;
+  if (!form || !form.classList || !form.classList.contains('module-action')) return;
+  e.preventDefault();
+
+  const actionUrl = form.getAttribute('action');
+  const li = form.closest('li');
+  const moduleId = li ? li.getAttribute('data-id') : null;
+  const prevState = li ? li.getAttribute('data-state') : null;
+
+  try {
+    await fetch(actionUrl, { method: 'POST', body: new FormData(form), redirect: 'follow' });
+
+    const timeoutMs = 5000;
+    const intervalMs = 300;
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      const resp = await fetch('/modules');
+      const text = await resp.text();
+      const tmp = document.createElement('div');
+      tmp.innerHTML = text;
+      const newFragment = tmp.querySelector('#module-list');
+      const oldFragment = document.querySelector('#module-list');
+
+      if (newFragment && oldFragment) {
+        // check module state change
+        const newLi = newFragment.querySelector("li[data-id='" + moduleId + "']");
+        const newState = newLi ? newLi.getAttribute('data-state') : null;
+
+        // Replace fragment when state changed or on last iteration
+        oldFragment.replaceWith(newFragment.cloneNode(true));
+
+        if (newState && newState !== prevState) return;
+      }
+
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+
+  } catch (err) {
+    alert('Actie mislukt: ' + err);
+  }
+});
+</script>
+
+</body>
+</html>

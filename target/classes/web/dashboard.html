@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PlugModCore Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 16px; }
+  </style>
+</head>
+<body>
+  <h1>PlugModCore Dashboard</h1>
+
+  <form method="post" action="/modules/upload" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".jar" required>
+    <button>Upload module</button>
+  </form>
+
+  <p><a href="/modules">Bekijk modules</a></p>
+
+</body>
+</html>

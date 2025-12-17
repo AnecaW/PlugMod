@@ -36,8 +36,21 @@ public class RegistryManager {
         // voorbereid voor later
         yaml.set(base + ".verified", false);
         yaml.set(base + ".disabled", false);
+        // store last known state (default UPLOADED)
+        yaml.set(base + ".state", "UPLOADED");
 
         save();
+    }
+
+    public synchronized void setModuleState(String internalId, String state) {
+        String base = "modules." + internalId;
+        yaml.set(base + ".state", state);
+        save();
+    }
+
+    public synchronized String getModuleState(String internalId) {
+        String base = "modules." + internalId;
+        return yaml.getString(base + ".state", null);
     }
 
     public synchronized void unregister(String internalId) {

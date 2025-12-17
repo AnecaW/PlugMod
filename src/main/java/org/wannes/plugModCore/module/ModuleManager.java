@@ -1,6 +1,8 @@
 package org.wannes.plugModCore.module;
 
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.wannes.plugModCore.PlugModCore;
 import org.wannes.plugModCore.api.Module;
 import org.wannes.plugModCore.security.RegistryManager;
 
@@ -16,18 +18,27 @@ import java.util.jar.JarFile;
 
 public class ModuleManager {
 
+    private final PlugModCore plugin;
     private final File modulesDir;
-    private final List<ModuleContainer> modules = new ArrayList<>();
+    private final File moduleDataDir;
     private final RegistryManager registryManager;
 
-    public ModuleManager(File dataFolder, RegistryManager registryManager) {
-        this.modulesDir = new File(dataFolder, "modules");
-        modulesDir.mkdirs();
+    private final List<ModuleContainer> modules = new ArrayList<>();
+
+    public ModuleManager(PlugModCore plugin, RegistryManager registryManager) {
+        this.plugin = plugin;
         this.registryManager = registryManager;
+
+        File dataFolder = plugin.getDataFolder();
+        this.modulesDir = new File(dataFolder, "modules");
+        this.moduleDataDir = new File(dataFolder, "module-data");
+
+        modulesDir.mkdirs();
+        moduleDataDir.mkdirs();
     }
 
     /* =========================
-       MODULE SCAN FLOW
+       SCAN MODULES
        ========================= */
     public void scanModules() {
         modules.clear();
@@ -38,9 +49,10 @@ public class ModuleManager {
         for (File file : files) {
             ModuleContainer container = new ModuleContainer(file);
 
-            // internalId = bestandsnaam zonder ".jar"
-            String name = file.getName();
-            String internalId = name.substring(0, name.length() - 4);
+            String fileName = file.getName();
+            if (!fileName.toLowerCase().endsWith(".jar")) continue;
+
+            String internalId = fileName.substring(0, fileName.length() - 4);
             container.setInternalId(internalId);
 
             ModuleInfo info = readModuleInfo(file);
@@ -52,99 +64,233 @@ public class ModuleManager {
                 continue;
             }
 
-            // After upload we keep modules in UPLOADED state until explicitly loaded
-            container.setState(ModuleState.UPLOADED);
+            // If the registry contains a saved state for this module, use it so the
+            // web UI immediately reflects the last known state. Otherwise default
+            // to UPLOADED.
+            if (registryManager != null) {
+                String saved = registryManager.getModuleState(internalId);
+                if (saved != null) {
+                    try {
+                        ModuleState s = ModuleState.valueOf(saved);
+                        container.setState(s);
+                    } catch (IllegalArgumentException ignored) {
+                        container.setState(ModuleState.UPLOADED);
+                    }
+                } else {
+                    container.setState(ModuleState.UPLOADED);
+                }
+            } else {
+                container.setState(ModuleState.UPLOADED);
+            }
+
             modules.add(container);
         }
     }
 
-    /* =========================
-       LOAD / UNLOAD SINGLE MODULE
-       ========================= */
-    public void loadModule(ModuleContainer module) {
-        if (module.getState() != ModuleState.UPLOADED) return;
+    /**
+     * Restore module states from the registry: load modules that were previously
+     * loaded (disabled/enabled) and re-enable those that were enabled.
+     */
+    public void restoreStatesOnStartup() {
+        for (ModuleContainer m : new ArrayList<>(modules)) {
+            String saved = registryManager != null ? registryManager.getModuleState(m.getInternalId()) : null;
+            if (saved == null) continue;
 
-        ModuleInfo info = module.getInfo();
+            ModuleState desired;
+            try {
+                desired = ModuleState.valueOf(saved);
+            } catch (IllegalArgumentException ex) {
+                // unknown state -> skip
+                plugin.getLogger().warning("Unknown saved state '" + saved + "' for module " + m.getInternalId());
+                continue;
+            }
+
+            // If desired is ENABLED or DISABLED we must ensure the module is loaded.
+            // Use a force-load method that ignores the container's current visible state
+            // because scanModules() populates the container state from registry for UI.
+            try {
+                loadModuleForce(m);
+
+                if (desired == ModuleState.ENABLED) {
+                    // enable on main thread (enableModule already uses runTask)
+                    enableModule(m);
+                }
+
+            } catch (Exception e) {
+                plugin.getLogger().severe("Failed to restore module " + m.getInternalId() + " to state " + desired + ": " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * Force load a module regardless of the container's current state. This is
+     * used during startup to load modules that had been loaded before shutdown.
+     */
+    public void loadModuleForce(ModuleContainer module) {
+        if (module.getState() == ModuleState.ENABLED) return; // already enabled
 
         try {
             URL jarUrl = module.getFile().toURI().toURL();
 
             ModuleClassLoader classLoader = new ModuleClassLoader(
                     jarUrl,
-                    this.getClass().getClassLoader()
+                    plugin.getClass().getClassLoader()
             );
 
-            Class<?> mainClass = classLoader.loadClass(info.mainClass);
+            Class<?> mainClass = classLoader.loadClass(module.getInfo().mainClass);
 
             if (!Module.class.isAssignableFrom(mainClass)) {
                 throw new IllegalStateException("Main class implementeert Module interface niet");
             }
 
-            Module instance = (Module) mainClass
-                    .getDeclaredConstructor()
-                    .newInstance();
+            Module instance = (Module) mainClass.getDeclaredConstructor().newInstance();
 
             module.setClassLoader(classLoader);
             module.setModuleInstance(instance);
+
+            // Context aanmaken (data folder per internalId)
+            ModuleContextImpl context = new ModuleContextImpl(module, moduleDataDir);
+            module.setContext(context);
+
             module.setState(ModuleState.DISABLED);
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
 
         } catch (Exception e) {
+            module.getInfo().error = "Laden faalde: " + e.getMessage();
             module.setState(ModuleState.FAILED);
-            info.error = "Main class laden faalde: " + e.getMessage();
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
+            plugin.getLogger().severe("Error loading module " + module.getInternalId() + ": " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+
+    /* =========================
+       LOAD / UNLOAD
+       ========================= */
+    public void loadModule(ModuleContainer module) {
+        if (module.getState() != ModuleState.UPLOADED) return;
+
+        try {
+            URL jarUrl = module.getFile().toURI().toURL();
+
+            ModuleClassLoader classLoader = new ModuleClassLoader(
+                    jarUrl,
+                    plugin.getClass().getClassLoader()
+            );
+
+            Class<?> mainClass = classLoader.loadClass(module.getInfo().mainClass);
+
+            if (!Module.class.isAssignableFrom(mainClass)) {
+                throw new IllegalStateException("Main class implementeert Module interface niet");
+            }
+
+            Module instance = (Module) mainClass.getDeclaredConstructor().newInstance();
+
+            module.setClassLoader(classLoader);
+            module.setModuleInstance(instance);
+
+            // Context aanmaken (data folder per internalId)
+            ModuleContextImpl context = new ModuleContextImpl(module, moduleDataDir);
+            module.setContext(context);
+
+            module.setState(ModuleState.DISABLED);
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
+
+        } catch (Exception e) {
+            module.getInfo().error = "Laden faalde: " + e.getMessage();
+            module.setState(ModuleState.FAILED);
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
+            e.printStackTrace();
         }
     }
 
     public void unloadModule(ModuleContainer module) {
-        // Prevent unloading while enabled
         if (module.getState() == ModuleState.ENABLED) return;
 
         try {
-            if (module.getContext() != null) {
-                // nothing to call on context, just drop ref
-                module.setContext(null);
-            }
-
             if (module.getClassLoader() != null) {
-                try {
-                    module.getClassLoader().close();
-                } catch (Exception ignored) {}
-                module.setClassLoader(null);
+                module.getClassLoader().close();
             }
 
+            module.setClassLoader(null);
             module.setModuleInstance(null);
+            module.setContext(null);
             module.setState(ModuleState.UPLOADED);
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.UPLOADED.name());
 
         } catch (Exception e) {
             module.setState(ModuleState.FAILED);
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
+            e.printStackTrace();
         }
     }
 
+    /* =========================
+       ENABLE / DISABLE (MAIN THREAD)
+       ========================= */
+    public void enableModule(ModuleContainer module) {
+        if (module.getState() != ModuleState.DISABLED) return;
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            try {
+                module.getModuleInstance().onEnable(module.getContext());
+                module.setState(ModuleState.ENABLED);
+                plugin.getLogger().info("Module enabled: " + module.getInternalId());
+                if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.ENABLED.name());
+
+            } catch (Exception e) {
+                module.setState(ModuleState.FAILED);
+                plugin.getLogger().severe("Enable failed: " + module.getInternalId());
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public void disableModule(ModuleContainer module) {
+        if (module.getState() != ModuleState.ENABLED) return;
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            try {
+                module.getModuleInstance().onDisable();
+                module.setState(ModuleState.DISABLED);
+                plugin.getLogger().info("Module disabled: " + module.getInternalId());
+                if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
+
+            } catch (Exception e) {
+                module.setState(ModuleState.FAILED);
+                plugin.getLogger().severe("Disable failed: " + module.getInternalId());
+                e.printStackTrace();
+            }
+        });
+    }
+
+    /* =========================
+       DELETE
+       ========================= */
     public void deleteModule(ModuleContainer module) {
-        // Ensure unloaded
         if (module.getState() == ModuleState.ENABLED) return;
 
         unloadModule(module);
 
-        // Delete jar
         try {
             module.getFile().delete();
         } catch (Exception ignored) {}
 
-        // Delete data folder
-        File dataBase = new File(modulesDir.getParentFile(), "module-data");
-        File moduleData = new File(dataBase, module.getInternalId());
-        if (moduleData.exists()) {
-            // best-effort recursive delete
-            deleteRecursive(moduleData);
-        }
+        File dataDir = new File(moduleDataDir, module.getInternalId());
+        deleteRecursive(dataDir);
 
-        // Remove registry entry
         if (registryManager != null) {
             registryManager.unregister(module.getInternalId());
         }
+
+        modules.remove(module);
     }
 
     private void deleteRecursive(File f) {
+        if (f == null || !f.exists()) return;
+
         if (f.isDirectory()) {
             File[] children = f.listFiles();
             if (children != null) {
@@ -155,7 +301,7 @@ public class ModuleManager {
     }
 
     /* =========================
-       MODULE.INFO READER
+       MODULE.INFO
        ========================= */
     private ModuleInfo readModuleInfo(File jarFile) {
         ModuleInfo info = new ModuleInfo();
@@ -169,7 +315,6 @@ public class ModuleManager {
             }
 
             try (InputStream in = jar.getInputStream(entry)) {
-
                 YamlConfiguration y = YamlConfiguration.loadConfiguration(
                         new InputStreamReader(in)
                 );
@@ -178,11 +323,9 @@ public class ModuleManager {
                 info.name = y.getString("name");
                 info.version = y.getString("version");
                 info.description = y.getString("description");
-
                 info.mainClass = y.getString("main");
                 info.apiVersion = y.getInt("api-version", 1);
 
-                // verplichte velden
                 if (info.id == null || info.mainClass == null) {
                     info.error = "Verplichte velden ontbreken (id / main)";
                     return info;
@@ -192,51 +335,12 @@ public class ModuleManager {
             }
 
         } catch (Exception e) {
-            info.error = "Fout bij lezen: " + e.getMessage();
+            info.error = "Lezen faalde: " + e.getMessage();
         }
 
         return info;
     }
 
-    /* =========================
-       ENABLE / DISABLE
-       ========================= */
-    public void enableModule(ModuleContainer module) {
-        if (module.getState() != ModuleState.DISABLED) return;
-
-        try {
-            Module instance = (Module) module.getModuleInstance();
-            ModuleContextImpl context = new ModuleContextImpl(
-                    module,
-                    new File(modulesDir.getParentFile(), "module-data")
-            );
-
-            module.setContext(context);
-            instance.onEnable(context);
-            module.setState(ModuleState.ENABLED);
-
-        } catch (Exception e) {
-            module.setState(ModuleState.FAILED);
-            module.getInfo().error = "onEnable faalde: " + e.getMessage();
-        }
-    }
-
-    public void disableModule(ModuleContainer module) {
-        if (module.getState() != ModuleState.ENABLED) return;
-
-        try {
-            Module instance = (Module) module.getModuleInstance();
-            instance.onDisable();
-            module.setState(ModuleState.DISABLED);
-
-        } catch (Exception e) {
-            module.setState(ModuleState.FAILED);
-        }
-    }
-
-    /* =========================
-       GETTERS
-       ========================= */
     public List<ModuleContainer> getModules() {
         return Collections.unmodifiableList(modules);
     }
