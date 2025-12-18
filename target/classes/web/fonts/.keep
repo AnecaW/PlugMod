@@ -1,0 +1,3 @@
+Place font files here (e.g. .woff, .woff2). This placeholder ensures the
+`fonts` directory is included in the packaged resources. Replace with actual
+font files when building the frontend.
