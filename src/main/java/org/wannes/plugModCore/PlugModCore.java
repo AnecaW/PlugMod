@@ -5,6 +5,7 @@ import org.wannes.plugModCore.config.ConfigLoader;
 import org.wannes.plugModCore.config.CoreConfig;
 import org.wannes.plugModCore.config.SecurityConfig;
 import org.wannes.plugModCore.module.ModuleManager;
+import org.wannes.plugModCore.module.ModuleContainer;
 import org.wannes.plugModCore.web.WebServer;
 import org.wannes.plugModCore.security.RegistryManager;
 
@@ -82,7 +83,7 @@ public class PlugModCore extends JavaPlugin {
 
             // If autoLoadModules is enabled, load any modules that remain UPLOADED
             if (coreConfig != null && coreConfig.autoLoadModules) {
-                for (var m : moduleManager.getModules()) {
+                for (ModuleContainer m : moduleManager.getModules()) {
                     if (m.getState() == org.wannes.plugModCore.module.ModuleState.UPLOADED) {
                         moduleManager.loadModule(m);
                     }

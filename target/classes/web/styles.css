@@ -1,0 +1,103 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Topbar */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 2px solid #000;
+}
+
+.time-msg {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.upload-center button {
+  border: 3px solid black;
+  border-radius: 16px;
+  padding: 8px 16px;
+  background: white;
+  cursor: pointer;
+}
+
+/* Layout */
+.layout {
+  flex: 1;
+  display: flex;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  border-right: 3px solid black;
+  padding: 16px;
+}
+
+.sidebar.hidden {
+  display: none;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+
+.sidebar li {
+  cursor: pointer;
+  margin: 8px 0;
+}
+
+/* Main */
+.main {
+  flex: 1;
+  padding: 24px;
+}
+
+/* Grid */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.card {
+  border: 4px solid black;
+  border-radius: 28px;
+  padding: 24px;
+  cursor: pointer;
+}
+
+/* Module view */
+#moduleView.hidden {
+  display: none;
+}
+
+/* Ribbon */
+.ribbon {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 3px solid black;
+}
+
+.ribbon button {
+  padding: 6px 14px;
+}
+
+.ribbon button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Module HTML */
+.module-content {
+  padding: 16px;
+}
