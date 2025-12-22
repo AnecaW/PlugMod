@@ -40,8 +40,16 @@ input[type=file]{margin-bottom:10px}
 .module h3{margin:0 0 8px}
 .status{color:var(--muted);font-size:13px;margin-bottom:8px}
 
-.topbar{background:var(--panel);padding:12px;border-radius:8px;margin-bottom:12px;display:flex;gap:8px}
+.topbar{background:var(--panel);padding:12px;border-radius:8px;margin-bottom:12px;display:flex;gap:8px;align-items:center}
 .module-content{background:var(--panel);padding:18px;border-radius:8px;color:var(--muted);min-height:300px}
+
+/* When viewing a module, make content area a column so iframe can fill remaining space */
+.content.module-active{display:flex;flex-direction:column}
+/* show module view only when content is in module-active mode (avoid overriding .hidden) */
+.content.module-active #moduleView{display:flex;flex-direction:column;flex:1}
+/* scope module-content flex behavior to module-active mode */
+.content.module-active .module-content{flex:1;padding:0}
+.content.module-active .module-content iframe{width:100%;height:100%;border:0;border-radius:8px}
 .hidden{display:none}
 
 /* small responsive tweaks */

@@ -15,6 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Enumeration;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 public class WebServer extends NanoHTTPD {
 
@@ -48,6 +51,7 @@ public class WebServer extends NanoHTTPD {
 
         // serve static web assets deployed to the plugin data folder (and fallback to classpath)
         if (uri.startsWith("/web/") && method == Method.GET) return serveStatic(uri);
+        if (uri.startsWith("/modules/website/") && method == Method.GET) return serveModuleWebsite(uri);
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
     }
@@ -110,6 +114,40 @@ public class WebServer extends NanoHTTPD {
 
             File target = new File(modulesDir, chosenInternalId + ".jar");
             Files.copy(tempFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            // extract ALL files from the uploaded jar into plugin data/module-data/<internalId>/ (overwrite)
+            try {
+                File moduleDataBase = new File(plugin.getDataFolder(), "module-data");
+                File moduleDataDir = new File(moduleDataBase, chosenInternalId);
+                moduleDataDir.mkdirs();
+
+                try (JarFile jar = new JarFile(target)) {
+                    Enumeration<JarEntry> entries = jar.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry entry = entries.nextElement();
+                        String name = entry.getName();
+
+                        // write every entry into module data folder, preserving path
+                        File out = new File(moduleDataDir, name);
+
+                        if (entry.isDirectory()) {
+                            out.mkdirs();
+                            continue;
+                        }
+
+                        File parent = out.getParentFile();
+                        if (parent != null && !parent.exists()) parent.mkdirs();
+
+                        try (InputStream in = jar.getInputStream(entry)) {
+                            Files.copy(in, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        } catch (Exception ex) {
+                            plugin.getLogger().warning("Failed to extract entry '" + name + "' for module " + chosenInternalId + ": " + ex.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                plugin.getLogger().warning("Failed to extract uploaded module " + chosenInternalId + ": " + ex.getMessage());
+            }
 
             String sha256 = org.wannes.plugModCore.util.HashUtils.sha256(target);
             if (plugin.getRegistryManager() != null) {
@@ -303,6 +341,43 @@ public class WebServer extends NanoHTTPD {
         }
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+    }
+
+    /**
+     * Serve files from module-data/<internalId>/web/... If path is empty or a
+     * directory, serve index.html from that web folder.
+     */
+    private Response serveModuleWebsite(String uri) {
+        try {
+            // uri = /modules/website/<id>[/<path>]
+            String rest = uri.substring("/modules/website/".length());
+            if (rest.isEmpty()) return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+
+            String[] parts = rest.split("/", 2);
+            String id = parts[0];
+            String path = (parts.length > 1) ? parts[1] : "";
+
+            File webBase = new File(plugin.getDataFolder(), "module-data" + File.separator + id + File.separator + "web");
+            if (!webBase.exists() || !webBase.isDirectory()) return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+
+            File f;
+            if (path.isEmpty() || path.endsWith("/")) {
+                f = new File(webBase, "index.html");
+            } else {
+                f = new File(webBase, path);
+            }
+
+            if (!f.exists() || !f.isFile()) return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+
+            byte[] data = Files.readAllBytes(f.toPath());
+            String ct = contentTypeByName(f.getName());
+            String body = new String(data, StandardCharsets.UTF_8);
+            return newFixedLengthResponse(Response.Status.OK, ct, body);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "500: " + e.getMessage());
+        }
     }
 
     private String contentTypeByName(String name) {

@@ -18,19 +18,38 @@
 
   /* ===== Navigation helpers ===== */
   function showGreeting(show){ const el = document.getElementById('greeting'); if(el) el.style.display = show ? 'block' : 'none'; }
-  function openModule(index){ currentModuleIndex = index; const hv = document.getElementById('homeView'); const mv = document.getElementById('moduleView'); if(hv) hv.classList.add('hidden'); if(mv) mv.classList.remove('hidden'); showGreeting(false); renderModuleTopbar(); loadModuleWebsite(); }
-  function goHome(){ const hv = document.getElementById('homeView'); const mv = document.getElementById('moduleView'); if(mv) mv.classList.add('hidden'); if(hv) hv.classList.remove('hidden'); showGreeting(true); currentModuleIndex = null; }
+
+  // toggle content area into module-view layout so iframe can fill remaining space
+  function setModuleContentActive(active){ const content = document.querySelector('.content'); if(!content) return; if(active) content.classList.add('module-active'); else content.classList.remove('module-active'); }
+
+  function openModule(index){ currentModuleIndex = index; const hv = document.getElementById('homeView'); const mv = document.getElementById('moduleView'); if(hv) hv.classList.add('hidden'); if(mv) mv.classList.remove('hidden'); showGreeting(false); setModuleContentActive(true); renderModuleTopbar(); loadModuleWebsite(); }
+  function goHome(){ const hv = document.getElementById('homeView'); const mv = document.getElementById('moduleView'); if(mv) mv.classList.add('hidden'); if(hv) hv.classList.remove('hidden'); showGreeting(true); setModuleContentActive(false); currentModuleIndex = null; }
 
   document.getElementById && document.getElementById('navHome') && (document.getElementById('navHome').onclick = goHome);
 
   /* ===== API helpers ===== */
   async function fetchModules(){
     try{
+      // preserve currently selected module id so detail view stays in sync
+      const selectedId = (currentModuleIndex != null && modules[currentModuleIndex]) ? modules[currentModuleIndex].internalId : null;
+
       const res = await fetch('/api/modules',{cache:'no-store'});
       if(!res.ok) throw new Error('Kon modules niet laden');
       const list = await res.json();
       modules = list.map(m=>({ internalId: m.internalId||m.id||m.fileName, name: m.name||m.fileName||'Unnamed', enabled: m.state==='ENABLED', loaded: m.state!=='UPLOADED', state: m.state, description: m.description||'', websiteEnabled: m.websiteEnabled, websiteEntry: m.websiteEntry }));
+
+      // restore selected index if possible
+      if (selectedId) {
+        const idx = modules.findIndex(x => x.internalId === selectedId);
+        currentModuleIndex = (idx >= 0) ? idx : null;
+      }
+
       renderModules();
+
+      // if we're in a detail view, update the topbar so buttons reflect live state
+      if (currentModuleIndex != null) {
+        renderModuleTopbar();
+      }
     }catch(e){ console.error(e); const c = document.getElementById('modules'); if(c) c.innerHTML = '<div class="muted">Fout bij laden modules</div>'; }
   }
 
@@ -103,10 +122,17 @@
     if(btnEnable.disabled) btnEnable.style.opacity='.6'; if(btnLoad.disabled) btnLoad.style.opacity='.6'; if(btnDelete.disabled) btnDelete.style.opacity='.6';
 
     top.appendChild(btnEnable); top.appendChild(btnLoad); top.appendChild(btnDelete);
+    // status text (placed after buttons)
+    const statusDiv = document.createElement('div'); statusDiv.className = 'status'; statusDiv.style.marginLeft = '12px'; statusDiv.innerText = 'Status: ' + (m.enabled? 'Enabled':'Disabled') + ' | ' + (m.loaded? 'Loaded':'Unloaded');
+    top.appendChild(statusDiv);
   }
 
   /* ===== Module website loader ===== */
-  function loadModuleWebsite(){ const m = modules[currentModuleIndex]; const content = document.getElementById('moduleContent'); if(!m||!content) return; content.innerHTML='Laden...'; if(m.websiteEnabled && m.websiteEntry){ const entryPath = '/modules/website/'+encodeURIComponent(m.internalId)+'/'+encodeURIComponent(m.websiteEntry); fetch(entryPath).then(r=>{ if(r.ok) return r.text(); throw new Error('Geen module website'); }).then(html=>{ content.innerHTML = html; }).catch(()=>{ content.innerHTML = '<div class="muted">Geen module-specifieke site beschikbaar</div>'; }); } else { content.innerHTML = '<div class="muted">Deze module heeft geen website</div>'; } }
+  function loadModuleWebsite(){ const m = modules[currentModuleIndex]; const frame = document.getElementById('moduleFrame'); const content = document.getElementById('moduleContent'); if(!m||!content||!frame) return; // always load module's web/index.html via server route
+    frame.src = '/modules/website/'+encodeURIComponent(m.internalId)+'/';
+    // ensure iframe is visible (in case previous code replaced innerHTML)
+    content.classList.remove('muted');
+  }
 
   /* ===== Upload ===== */
   async function uploadFiles(){
@@ -122,7 +148,10 @@
     finally{ btn.disabled = false; btn.innerText = 'Upload'; }
   }
 
-  document.addEventListener('DOMContentLoaded', ()=>{ document.getElementById && document.getElementById('uploadBtn') && document.getElementById('uploadBtn').addEventListener('click', uploadFiles); fetchModules(); });
+  document.addEventListener('DOMContentLoaded', ()=>{ document.getElementById && document.getElementById('uploadBtn') && document.getElementById('uploadBtn').addEventListener('click', uploadFiles); fetchModules();
+    // poll modules every 3s to keep UI (including detail topbar) up-to-date
+    setInterval(fetchModules, 3000);
+  });
 
   /* ===== Utilities ===== */
   /* ===== Confirmation modal helper ===== */

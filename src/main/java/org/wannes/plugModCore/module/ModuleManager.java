@@ -12,9 +12,13 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 public class ModuleManager {
 
@@ -153,6 +157,11 @@ public class ModuleManager {
             ModuleContextImpl context = new ModuleContextImpl(module, moduleDataDir);
             module.setContext(context);
 
+            // ensure module resources from JAR are copied to module-data (only missing files)
+            try {
+                extractResourcesIfNeeded(module);
+            } catch (Exception ignored) {}
+
             module.setState(ModuleState.DISABLED);
             if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
 
@@ -195,6 +204,10 @@ public class ModuleManager {
             ModuleContextImpl context = new ModuleContextImpl(module, moduleDataDir);
             module.setContext(context);
 
+                // ensure module resources from JAR are copied to module-data (only missing files)
+                try {
+                    extractResourcesIfNeeded(module);
+                } catch (Exception ignored) {}
             module.setState(ModuleState.DISABLED);
             if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
 
@@ -203,6 +216,50 @@ public class ModuleManager {
             module.setState(ModuleState.FAILED);
             if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Copy any files from the module JAR's `resources/` directory into the
+     * module-data/<internalId> folder, but do not overwrite existing files.
+     */
+    private void extractResourcesIfNeeded(ModuleContainer module) {
+        File jarFile = module.getFile();
+        if (jarFile == null || !jarFile.exists()) return;
+
+        File targetBase = new File(moduleDataDir, module.getInternalId());
+        if (!targetBase.exists()) targetBase.mkdirs();
+
+        try (JarFile jar = new JarFile(jarFile)) {
+            Enumeration<JarEntry> entries = jar.entries();
+            while (entries.hasMoreElements()) {
+                JarEntry entry = entries.nextElement();
+                String name = entry.getName();
+
+                if (!name.startsWith("resources/")) continue;
+
+                String rel = name.substring("resources/".length());
+                if (rel.isEmpty()) continue;
+
+                File out = new File(targetBase, rel);
+
+                if (entry.isDirectory()) {
+                    if (!out.exists()) out.mkdirs();
+                    continue;
+                }
+
+                File parent = out.getParentFile();
+                if (parent != null && !parent.exists()) parent.mkdirs();
+
+                // skip if already exists
+                if (out.exists()) continue;
+
+                try (InputStream in = jar.getInputStream(entry)) {
+                    Files.copy(in, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to extract resources for module " + module.getInternalId() + ": " + e.getMessage());
         }
     }
 
