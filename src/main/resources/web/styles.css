@@ -1,103 +1,59 @@
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+/* Global layout and theme for PlugMod dashboard */
+:root{
+  --bg:#0f172a;
+  --panel:#020617;
+  --muted:#94a3b8;
+  --accent:#2563eb;
+  --success:#16a34a;
+  --danger:#dc2626;
+  --card-radius:10px;
 }
 
-/* Topbar */
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-bottom: 2px solid #000;
+*{box-sizing:border-box}
+body{
+  margin:0; font-family:Inter, system-ui, Arial, sans-serif; background:var(--bg); color:#fff; height:100vh;
 }
+.app{display:flex;height:100vh}
 
-.time-msg {
-  font-size: 14px;
-  font-weight: bold;
-}
+.sidebar{width:240px;background:var(--panel);padding:20px}
+.sidebar h2{margin:0 0 12px;font-size:16px}
+.sidebar button{display:block;width:100%;margin-bottom:8px;padding:10px;border:0;background:#1e293b;color:#fff;border-radius:6px;text-align:left;cursor:pointer}
+.sidebar button:hover{background:#334155}
 
-.upload-center button {
-  border: 3px solid black;
-  border-radius: 16px;
-  padding: 8px 16px;
-  background: white;
-  cursor: pointer;
-}
+.content{flex:1;padding:28px;position:relative;overflow:auto}
+.greeting{position:absolute;left:36px;top:20px;font-size:56px;font-weight:700;color:#e6eef8}
 
-/* Layout */
-.layout {
-  flex: 1;
-  display: flex;
-}
+.center{text-align:center;margin-top:120px}
+.title{font-size:32px;margin-bottom:8px}
+.upload-box{margin:20px auto}
+input[type=file]{margin-bottom:10px}
 
-/* Sidebar */
-.sidebar {
-  width: 220px;
-  border-right: 3px solid black;
-  padding: 16px;
-}
+.btn{padding:10px 14px;border-radius:8px;border:0;color:#fff;cursor:pointer;margin:4px}
+.btn.green{background:var(--success)}
+.btn.gray{background:#475569}
+.btn.red{background:var(--danger)}
+.btn.blue{background:var(--accent)}
+.btn[disabled]{cursor:not-allowed;opacity:.6}
 
-.sidebar.hidden {
-  display: none;
-}
+.modules{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:40px}
+.module{background:var(--panel);padding:16px;border-radius:var(--card-radius);min-height:100px;display:flex;flex-direction:column;justify-content:space-between}
+.module h3{margin:0 0 8px}
+.status{color:var(--muted);font-size:13px;margin-bottom:8px}
 
-.sidebar ul {
-  list-style: none;
-  padding: 0;
-}
+.topbar{background:var(--panel);padding:12px;border-radius:8px;margin-bottom:12px;display:flex;gap:8px}
+.module-content{background:var(--panel);padding:18px;border-radius:8px;color:var(--muted);min-height:300px}
+.hidden{display:none}
 
-.sidebar li {
-  cursor: pointer;
-  margin: 8px 0;
-}
+/* small responsive tweaks */
+@media (max-width:900px){.greeting{font-size:28px;left:18px}.sidebar{display:none}.content{padding:18px}}
 
-/* Main */
-.main {
-  flex: 1;
-  padding: 24px;
-}
+/* Utilities */
+.muted{color:var(--muted)}
 
-/* Grid */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-}
-
-.card {
-  border: 4px solid black;
-  border-radius: 28px;
-  padding: 24px;
-  cursor: pointer;
-}
-
-/* Module view */
-#moduleView.hidden {
-  display: none;
-}
-
-/* Ribbon */
-.ribbon {
-  display: flex;
-  gap: 12px;
-  padding: 12px;
-  border-bottom: 3px solid black;
-}
-
-.ribbon button {
-  padding: 6px 14px;
-}
-
-.ribbon button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Module HTML */
-.module-content {
-  padding: 16px;
-}
+/* Toast notifications */
+#toast-container{position:fixed;right:16px;top:16px;z-index:1100;display:flex;flex-direction:column;gap:8px}
+.toast{min-width:200px;padding:10px 14px;border-radius:8px;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,.4);font-size:14px}
+.toast.success{background:var(--success)}
+.toast.error{background:var(--danger)}
+.toast.info{background:var(--accent)}
+.toast.hide{opacity:0;transform:translateY(-8px);transition:all .2s ease}

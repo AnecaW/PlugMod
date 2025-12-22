@@ -1,473 +1,54 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>PlugMod</title>
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PlugMod — Dashboard</title>
+    <link rel="stylesheet" href="/web/styles.css">
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <h2>Navigation</h2>
+        <button id="navHome">🏠 Home</button>
+        <div id="moduleList"></div>
+      </aside>
 
-<style>
-body {
-  margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #0f172a;
-  color: white;
-}
+      <main class="content">
+        <div class="greeting" id="greeting"></div>
 
-.app {
-  display: flex;
-  height: 100vh;
-}
+        <section id="homeView">
+          <div class="center">
+            <div class="title">Upload Modules</div>
+            <div class="upload-box">
+              <input type="file" multiple id="fileInput"><br>
+              <button class="btn blue" id="uploadBtn">Upload</button>
+            </div>
+          </div>
+          <div class="modules" id="modules"></div>
+        </section>
 
-/* Sidebar */
-.sidebar {
-  width: 240px;
-  background: #020617;
-  padding: 20px;
-  box-sizing: border-box;
-}
+        <section id="moduleView" class="hidden">
+          <div class="topbar" id="moduleTopbar"></div>
+          <div class="module-content" id="moduleContent">Module content loading…</div>
+        </section>
+      </main>
+    </div>
 
-.sidebar h2 {
-  margin-top: 0;
-  font-size: 18px;
-}
+    <!-- Toast container -->
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-.sidebar button {
-  width: 100%;
-  margin-bottom: 8px;
-  padding: 10px;
-  background: #1e293b;
-  color: white;
-  border: none;
-  cursor: pointer;
-  border-radius: 6px;
-  text-align: left;
-}
-
-.sidebar button:hover {
-  background: #334155;
-}
-
-/* Content */
-.content {
-  flex: 1;
-  padding: 30px;
-  box-sizing: border-box;
-  position: relative;
-  overflow-y: auto;
-}
-
-/* Greeting */
-.greeting {
-  position: absolute;
-  top: 20px;
-  left: 30px;
-  font-size: 64px;
-  font-weight: bold;
-}
-
-/* Home */
-.center {
-  text-align: center;
-  margin-top: 120px;
-}
-
-.title {
-  font-size: 36px;
-  font-weight: bold;
-}
-
-.upload-box {
-  margin: 30px 0;
-}
-
-input[type="file"] {
-  margin-bottom: 10px;
-}
-
-/* Buttons */
-.btn {
-  padding: 10px 18px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  margin: 4px;
-  color: white;
-}
-
-.btn.green { background: #16a34a; }
-.btn.gray  { background: #475569; }
-.btn.red   { background: #dc2626; }
-.btn.blue  { background: #2563eb; }
-
-/* Modules grid */
-.modules {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 16px;
-  margin-top: 40px;
-}
-
-.module {
-  background: #020617;
-  padding: 16px;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.module h3 {
-  margin-top: 0;
-}
-
-.status {
-  font-size: 14px;
-  color: #94a3b8;
-  margin-bottom: 10px;
-}
-
-/* Module view */
-.topbar {
-  background: #020617;
-  padding: 15px;
-  border-radius: 10px;
-  margin-bottom: 20px;
-}
-
-.module-content {
-  background: #020617;
-  height: 400px;
-  border-radius: 10px;
-  padding: 20px;
-  color: #94a3b8;
-}
-
-.hidden {
-  display: none;
-}
-</style>
-</head>
-
-<body>
-
-<div class="app">
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <h2>Navigation</h2>
-    <button onclick="goHome()">🏠 Home</button>
-    <div id="moduleList"></div>
-  </div>
-
-  <!-- Content -->
-  <div class="content">
-
-    <!-- Greeting -->
-    <div class="greeting" id="greeting"></div>
-
-    <!-- Home View -->
-    <div id="homeView">
-      <div class="center">
-        <div class="title">Upload Modules</div>
-
-        <div class="upload-box">
-          <input type="file" multiple id="fileInput"><br>
-          <button class="btn blue" id="uploadBtn">Upload</button>
+    <!-- Confirmation modal (used by future JS modal replacement) -->
+    <div id="confirmModal" class="hidden" role="dialog" aria-modal="true">
+      <div class="modal" style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);padding:18px;border-radius:8px;min-width:320px;z-index:1200;">
+        <div id="confirmMessage" style="margin-bottom:12px;color:var(--muted)"></div>
+        <div style="text-align:right">
+          <button id="confirmCancel" class="btn gray">Annuleer</button>
+          <button id="confirmOk" class="btn red">Verwijder</button>
         </div>
       </div>
-
-      <div class="modules" id="modules"></div>
     </div>
 
-    <!-- Module View -->
-    <div id="moduleView" class="hidden">
-      <div class="topbar" id="moduleTopbar"></div>
-
-      <div class="module-content" id="moduleContent">
-        HTML content van de module komt hier.
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<script>
-/* ===== State ===== */
-let modules = [];
-let currentModuleIndex = null;
-
-/* ===== Greeting ===== */
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-function updateGreeting() {
-  const g = document.getElementById("greeting");
-  if (g) g.innerText = getGreeting();
-}
-
-updateGreeting();
-setInterval(updateGreeting, 60000);
-
-/* ===== Navigation ===== */
-function showGreeting(show) {
-  const el = document.getElementById("greeting");
-  if (el) el.style.display = show ? "block" : "none";
-}
-
-function openModule(index) {
-  currentModuleIndex = index;
-  const hv = document.getElementById("homeView");
-  const mv = document.getElementById("moduleView");
-  if (hv) hv.classList.add("hidden");
-  if (mv) mv.classList.remove("hidden");
-  showGreeting(false);
-  renderModuleTopbar();
-  loadModuleWebsite();
-}
-
-function goHome() {
-  const hv = document.getElementById("homeView");
-  const mv = document.getElementById("moduleView");
-  if (mv) mv.classList.add("hidden");
-  if (hv) hv.classList.remove("hidden");
-  showGreeting(true);
-  currentModuleIndex = null;
-}
-
-/* ===== API Helpers ===== */
-async function fetchModules() {
-  try {
-    const res = await fetch('/api/modules', {cache:'no-store'});
-    if(!res.ok) throw new Error('Kon modules niet laden');
-    const list = await res.json();
-    modules = list.map(m => ({
-      internalId: m.internalId || m.id || m.fileName,
-      name: m.name || m.fileName || 'Unnamed',
-      enabled: m.state === 'ENABLED',
-      loaded: m.state !== 'UPLOADED',
-      state: m.state,
-      description: m.description || '',
-      websiteEnabled: m.websiteEnabled,
-      websiteEntry: m.websiteEntry
-    }));
-    renderModules();
-  } catch (err) {
-    console.error(err);
-    const container = document.getElementById('modules');
-    if (container) container.innerHTML = '<div style="color:#faa">Fout bij laden modules</div>';
-  }
-}
-
-async function waitForModuleState(id, expectedState, timeoutMs = 5000, intervalMs = 300) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch('/api/modules', {cache: 'no-store'});
-      if (res.ok) {
-        const list = await res.json();
-        const m = list.find(x => x.internalId === id);
-        if (expectedState === null) {
-          if (!m) return true; // deleted
-        } else {
-          if (m && m.state === expectedState) return true;
-        }
-      }
-    } catch (e) { /* ignore and retry */ }
-    await new Promise(r => setTimeout(r, intervalMs));
-  }
-  return false;
-}
-
-async function postAction(path, expectedState, moduleId) {
-  try {
-    const res = await fetch(path, {method:'POST'});
-    if(!res.ok) {
-      const txt = await res.text();
-      throw new Error(txt || 'Actie mislukt');
-    }
-
-    // If caller provided an expectedState and moduleId, poll until state matches
-    if (moduleId && typeof expectedState === 'string') {
-      const ok = await waitForModuleState(moduleId, expectedState, 7000, 300);
-      if (!ok) {
-        // final refresh anyway
-        await fetchModules();
-        alert('Actie voltooid maar status-update vertraagd. Vernieuw indien nodig.');
-        return;
-      }
-      await fetchModules();
-      return;
-    }
-
-    if (moduleId && expectedState === null) {
-      // expected deletion
-      const ok = await waitForModuleState(moduleId, null, 7000, 300);
-      await fetchModules();
-      return;
-    }
-
-    await fetchModules();
-  } catch (err) {
-    alert('Actie mislukt: ' + err.message);
-  }
-}
-
-/* ===== Render ===== */
-function renderModules() {
-  const container = document.getElementById("modules");
-  const list = document.getElementById("moduleList");
-  if (!container || !list) return;
-  container.innerHTML = "";
-  list.innerHTML = "";
-
-  modules.forEach((m, i) => {
-    const div = document.createElement("div");
-    div.className = "module";
-    div.onclick = () => openModule(i);
-
-    const html = `
-      <h3>${escapeHtml(m.name)}</h3>
-      <div class="status">
-        Status: ${m.enabled ? "Enabled" : "Disabled"} | ${m.loaded ? "Loaded" : "Unloaded"}
-      </div>
-    `;
-    div.innerHTML = html;
-
-    const btnEnable = document.createElement('button');
-    btnEnable.className = 'btn green';
-    btnEnable.innerText = m.enabled ? 'Disable' : 'Enable';
-    btnEnable.onclick = (e) => { e.stopPropagation(); postAction('/modules/' + (m.enabled ? 'disable/' : 'enable/') + encodeURIComponent(m.internalId), (m.enabled ? 'DISABLED' : 'ENABLED'), m.internalId); };
-      // can only (en/dis)able when module is loaded
-      btnEnable.disabled = !m.loaded;
-  
-      // (visual cue will be applied after buttons are created)
-
-    const btnLoad = document.createElement('button');
-    btnLoad.className = 'btn gray';
-    btnLoad.innerText = m.loaded ? 'Unload' : 'Load';
-    btnLoad.onclick = (e) => { e.stopPropagation(); postAction('/modules/' + (m.loaded ? 'unload/' : 'load/') + encodeURIComponent(m.internalId), (m.loaded ? 'UPLOADED' : 'DISABLED'), m.internalId); };
-    // If module is enabled, it cannot be unloaded. If not loaded, Load is allowed.
-    btnLoad.disabled = !!(m.loaded && m.enabled);
-
-    const btnDelete = document.createElement('button');
-    btnDelete.className = 'btn red';
-    btnDelete.innerText = 'Delete';
-    btnDelete.onclick = (e) => { e.stopPropagation(); if(confirm('Verwijder module '+m.name+'?')) postAction('/modules/delete/' + encodeURIComponent(m.internalId), null, m.internalId); };
-      // cannot delete while loaded or enabled
-      btnDelete.disabled = !!(m.loaded || m.enabled);
-
-    // visually indicate disabled buttons (subtle)
-    if (btnEnable.disabled) btnEnable.style.opacity = '0.5';
-    if (btnLoad.disabled) btnLoad.style.opacity = '0.5';
-    if (btnDelete.disabled) btnDelete.style.opacity = '0.5';
-
-    const btnWrap = document.createElement('div');
-    btnWrap.appendChild(btnEnable);
-    btnWrap.appendChild(btnLoad);
-    btnWrap.appendChild(btnDelete);
-
-    div.appendChild(btnWrap);
-    container.appendChild(div);
-
-    const btn = document.createElement("button");
-    btn.innerText = m.name;
-    btn.onclick = () => openModule(i);
-    list.appendChild(btn);
-  });
-}
-
-function renderModuleTopbar() {
-  const m = modules[currentModuleIndex];
-  const top = document.getElementById('moduleTopbar');
-  if (!m || !top) return;
-  top.innerHTML = '';
-
-  const btnEnable = document.createElement('button');
-  btnEnable.className = 'btn green';
-  btnEnable.innerText = m.enabled ? 'Disable' : 'Enable';
-  btnEnable.onclick = (e) => { e.stopPropagation(); postAction('/modules/' + (m.enabled ? 'disable/' : 'enable/') + encodeURIComponent(m.internalId), (m.enabled ? 'DISABLED' : 'ENABLED'), m.internalId); };
-  // only allow enable/disable when loaded
-  btnEnable.disabled = !m.loaded;
-
-  const btnLoad = document.createElement('button');
-  btnLoad.className = 'btn gray';
-  btnLoad.innerText = m.loaded ? 'Unload' : 'Load';
-  btnLoad.onclick = (e) => { e.stopPropagation(); postAction('/modules/' + (m.loaded ? 'unload/' : 'load/') + encodeURIComponent(m.internalId), (m.loaded ? 'UPLOADED' : 'DISABLED'), m.internalId); };
-  // cannot unload when module is enabled
-  btnLoad.disabled = !!(m.loaded && m.enabled);
-
-  const btnDelete = document.createElement('button');
-  btnDelete.className = 'btn red';
-  btnDelete.innerText = 'Delete';
-  btnDelete.onclick = (e) => { e.stopPropagation(); if(confirm('Verwijder module '+m.name+'?')) postAction('/modules/delete/' + encodeURIComponent(m.internalId), null, m.internalId); };
-  // cannot delete while loaded or enabled
-  btnDelete.disabled = !!(m.loaded || m.enabled);
-
-  // visual cues for disabled
-  if (btnEnable.disabled) btnEnable.style.opacity = '0.5';
-  if (btnLoad.disabled) btnLoad.style.opacity = '0.5';
-  if (btnDelete.disabled) btnDelete.style.opacity = '0.5';
-
-  top.appendChild(btnEnable);
-  top.appendChild(btnLoad);
-  top.appendChild(btnDelete);
-}
-
-/* ===== Module website loader ===== */
-function loadModuleWebsite(){
-  const m = modules[currentModuleIndex];
-  const content = document.getElementById('moduleContent');
-  if(!m || !content) return;
-  content.innerHTML = 'Laden...';
-  if (m.websiteEnabled && m.websiteEntry) {
-    const entryPath = '/modules/website/' + encodeURIComponent(m.internalId) + '/' + encodeURIComponent(m.websiteEntry);
-    fetch(entryPath).then(r=>{ if(r.ok) return r.text(); throw new Error('Geen module website'); })
-      .then(html => { content.innerHTML = html; })
-      .catch(()=>{ content.innerHTML = '<div style="color:#94a3b8">Geen module-specifieke site beschikbaar</div>'; });
-  } else {
-    content.innerHTML = '<div style="color:#94a3b8">Deze module heeft geen website</div>';
-  }
-}
-
-/* ===== Upload ===== */
-async function uploadFiles() {
-  const input = document.getElementById('fileInput');
-  const btn = document.getElementById('uploadBtn');
-  if (!input || !input.files.length) { alert('Kies eerst een bestand'); return; }
-  const files = Array.from(input.files);
-  btn.disabled = true;
-  btn.innerText = 'Uploading...';
-  try {
-    const fd = new FormData();
-    files.forEach(f => fd.append('file', f, f.name));
-    const res = await fetch('/modules/upload', { method: 'POST', body: fd });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(txt || 'Upload mislukt');
-    }
-    try { const info = await res.json(); if(info && info.id) alert('Upload voltooid (id: '+info.id+')'); else alert('Upload voltooid'); } catch(e) { alert('Upload voltooid'); }
-    input.value = '';
-    await fetchModules();
-    goHome();
-  } catch (err) {
-    alert('Upload mislukt: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    btn.innerText = 'Upload';
-  }
-}
-
-document.getElementById('uploadBtn').addEventListener('click', uploadFiles);
-
-/* ===== Utilities ===== */
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;" })[c]); }
-
-/* ===== Init ===== */
-document.addEventListener('DOMContentLoaded', ()=>{
-  fetchModules();
-});
-</script>
-
-</body>
+    <script src="/web/dashboard.js"></script>
+  </body>
 </html>
