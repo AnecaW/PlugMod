@@ -1,6 +1,9 @@
 package org.wannes.plugModCore.web;
 
 import fi.iki.elonen.NanoHTTPD;
+import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.scheduler.BukkitTask;
 import org.wannes.plugModCore.PlugModCore;
 import org.wannes.plugModCore.module.ModuleContainer;
 import org.wannes.plugModCore.module.ModuleInfo;
@@ -10,10 +13,13 @@ import org.wannes.plugModCore.module.ModuleManager;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Enumeration;
 import java.util.jar.JarEntry;
@@ -22,6 +28,7 @@ import java.util.jar.JarFile;
 public class WebServer extends NanoHTTPD {
 
     private final PlugModCore plugin;
+    private final Map<String, BukkitTask> scoreboardReloadTasks = new HashMap<>();
 
     public WebServer(PlugModCore plugin, String hostname, int port) {
         super(hostname, port);
@@ -36,22 +43,29 @@ public class WebServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
 
         String uri = session.getUri();
-        Method method = session.getMethod();
+        NanoHTTPD.Method method = session.getMethod();
 
-        if (uri.equals("/") && method == Method.GET) return showDashboard();
-        if (uri.equals("/modules") && method == Method.GET) return listModules();
-        if (uri.equals("/api/modules") && method == Method.GET) return listModulesJson();
-        if (uri.equals("/modules/upload") && method == Method.POST) return handleModuleUpload(session);
+        if (uri.equals("/") && method == NanoHTTPD.Method.GET) return showDashboard();
+        if (uri.equals("/modules") && method == NanoHTTPD.Method.GET) return listModules();
+        if (uri.equals("/api/modules") && method == NanoHTTPD.Method.GET) return listModulesJson();
+        if (uri.equals("/modules/upload") && method == NanoHTTPD.Method.POST) return handleModuleUpload(session);
 
-        if (uri.startsWith("/modules/load/") && method == Method.POST) return loadModule(uri);
-        if (uri.startsWith("/modules/unload/") && method == Method.POST) return unloadModule(uri);
-        if (uri.startsWith("/modules/enable/") && method == Method.POST) return enableModule(uri);
-        if (uri.startsWith("/modules/disable/") && method == Method.POST) return disableModule(uri);
-        if (uri.startsWith("/modules/delete/") && method == Method.POST) return deleteModule(uri);
+        if (uri.startsWith("/modules/load/") && method == NanoHTTPD.Method.POST) return loadModule(uri);
+        if (uri.startsWith("/modules/unload/") && method == NanoHTTPD.Method.POST) return unloadModule(uri);
+        if (uri.startsWith("/modules/enable/") && method == NanoHTTPD.Method.POST) return enableModule(uri);
+        if (uri.startsWith("/modules/disable/") && method == NanoHTTPD.Method.POST) return disableModule(uri);
+        if (uri.startsWith("/modules/delete/") && method == NanoHTTPD.Method.POST) return deleteModule(uri);
+
+        if (uri.startsWith("/api/modules/") && uri.endsWith("/scoreboard/get") && method == NanoHTTPD.Method.GET) {
+            return getScoreboardConfig(uri);
+        }
+        if (uri.startsWith("/api/modules/") && uri.endsWith("/scoreboard/set") && method == NanoHTTPD.Method.POST) {
+            return setScoreboardConfig(session, uri);
+        }
 
         // serve static web assets deployed to the plugin data folder (and fallback to classpath)
-        if (uri.startsWith("/web/") && method == Method.GET) return serveStatic(uri);
-        if (uri.startsWith("/modules/website/") && method == Method.GET) return serveModuleWebsite(uri);
+        if (uri.startsWith("/web/") && method == NanoHTTPD.Method.GET) return serveStatic(uri);
+        if (uri.startsWith("/modules/website/") && method == NanoHTTPD.Method.GET) return serveModuleWebsite(uri);
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
     }
@@ -114,40 +128,6 @@ public class WebServer extends NanoHTTPD {
 
             File target = new File(modulesDir, chosenInternalId + ".jar");
             Files.copy(tempFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-            // extract ALL files from the uploaded jar into plugin data/module-data/<internalId>/ (overwrite)
-            try {
-                File moduleDataBase = new File(plugin.getDataFolder(), "module-data");
-                File moduleDataDir = new File(moduleDataBase, chosenInternalId);
-                moduleDataDir.mkdirs();
-
-                try (JarFile jar = new JarFile(target)) {
-                    Enumeration<JarEntry> entries = jar.entries();
-                    while (entries.hasMoreElements()) {
-                        JarEntry entry = entries.nextElement();
-                        String name = entry.getName();
-
-                        // write every entry into module data folder, preserving path
-                        File out = new File(moduleDataDir, name);
-
-                        if (entry.isDirectory()) {
-                            out.mkdirs();
-                            continue;
-                        }
-
-                        File parent = out.getParentFile();
-                        if (parent != null && !parent.exists()) parent.mkdirs();
-
-                        try (InputStream in = jar.getInputStream(entry)) {
-                            Files.copy(in, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        } catch (Exception ex) {
-                            plugin.getLogger().warning("Failed to extract entry '" + name + "' for module " + chosenInternalId + ": " + ex.getMessage());
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                plugin.getLogger().warning("Failed to extract uploaded module " + chosenInternalId + ": " + ex.getMessage());
-            }
 
             String sha256 = org.wannes.plugModCore.util.HashUtils.sha256(target);
             if (plugin.getRegistryManager() != null) {
@@ -344,8 +324,8 @@ public class WebServer extends NanoHTTPD {
     }
 
     /**
-     * Serve files from module-data/<internalId>/web/... If path is empty or a
-     * directory, serve index.html from that web folder.
+     * Serve files directly from the module JAR. PlugModCore does not extract or modify module assets.
+     * If path is empty, serve the module's configured website.entry.
      */
     private Response serveModuleWebsite(String uri) {
         try {
@@ -357,27 +337,59 @@ public class WebServer extends NanoHTTPD {
             String id = parts[0];
             String path = (parts.length > 1) ? parts[1] : "";
 
-            File webBase = new File(plugin.getDataFolder(), "module-data" + File.separator + id + File.separator + "web");
-            if (!webBase.exists() || !webBase.isDirectory()) return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+            ModuleContainer container = plugin.getModuleManager().getModules().stream()
+                    .filter(m -> id.equals(m.getInternalId()))
+                    .findFirst()
+                    .orElse(null);
 
-            File f;
-            if (path.isEmpty() || path.endsWith("/")) {
-                f = new File(webBase, "index.html");
-            } else {
-                f = new File(webBase, path);
+            if (container == null || container.getFile() == null || !container.getFile().exists()) {
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
             }
 
-            if (!f.exists() || !f.isFile()) return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+            String entry = resolveModuleWebsiteEntry(container, path);
+            if (entry == null || entry.isBlank()) {
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+            }
 
-            byte[] data = Files.readAllBytes(f.toPath());
-            String ct = contentTypeByName(f.getName());
-            String body = new String(data, StandardCharsets.UTF_8);
-            return newFixedLengthResponse(Response.Status.OK, ct, body);
+            try (JarFile jar = new JarFile(container.getFile())) {
+                JarEntry jarEntry = jar.getJarEntry(entry);
+                if (jarEntry == null || jarEntry.isDirectory()) {
+                    return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+                }
+
+                byte[] data;
+                try (InputStream in = jar.getInputStream(jarEntry)) {
+                    data = in.readAllBytes();
+                }
+
+                String ct = contentTypeByName(entry);
+                String body = new String(data, StandardCharsets.UTF_8);
+                return newFixedLengthResponse(Response.Status.OK, ct, body);
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "500: " + e.getMessage());
         }
+    }
+
+    private String resolveModuleWebsiteEntry(ModuleContainer container, String path) {
+        String websiteEntry = container.getInfo() != null ? container.getInfo().websiteEntry : null;
+        if (websiteEntry == null || websiteEntry.isBlank()) {
+            websiteEntry = "web/index.html";
+        }
+
+        if (path == null || path.isBlank() || path.endsWith("/")) {
+            return websiteEntry;
+        }
+
+        // First try exact request path, then fall back to being relative to the configured website entry folder.
+        if (path.equals(websiteEntry)) {
+            return path;
+        }
+
+        String websiteBase = websiteEntry.contains("/") ? websiteEntry.substring(0, websiteEntry.lastIndexOf('/') + 1) : "";
+        return path.startsWith("/") ? path.substring(1) : websiteBase + path;
     }
 
     private String contentTypeByName(String name) {
@@ -437,5 +449,220 @@ public class WebServer extends NanoHTTPD {
     private String jsonEscape(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    private Response getScoreboardConfig(String uri) {
+        String id = extractModuleIdForScoreboard(uri);
+        if (id == null || id.isBlank()) return badRequest("Ongeldige module id");
+
+        File configFile = new File(plugin.getDataFolder(), "module-data" + File.separator + id + File.separator + "scoreboard.yml");
+        if (!configFile.exists()) {
+            String json = "{\"mode\":\"manual\",\"rotationSeconds\":10,\"activePageId\":\"page-1\",\"pages\":[{\"id\":\"page-1\",\"name\":\"Pagina 1\",\"enabled\":true,\"title\":\"§aServerManager\",\"lines\":[\"§7Welkom!\",\"§fOnline: §a%online%\",\"§fHave fun!\"]}]}";
+            return newFixedLengthResponse(Response.Status.OK, "application/json", json);
+        }
+
+        try {
+            YamlConfiguration cfg = YamlConfiguration.loadConfiguration(configFile);
+            String mode = cfg.getString("mode", "manual");
+            int rotationSeconds = cfg.getInt("rotation-seconds", 10);
+            String activePageId = cfg.getString("active-page", "page-1");
+
+            List<Map<?, ?>> pageMaps = cfg.getMapList("pages");
+            if (pageMaps == null || pageMaps.isEmpty()) {
+                Map<String, Object> single = new HashMap<>();
+                single.put("id", "page-1");
+                single.put("name", "Pagina 1");
+                single.put("enabled", true);
+                single.put("title", cfg.getString("title", "§aServerManager"));
+                single.put("lines", cfg.getStringList("lines"));
+                pageMaps = new ArrayList<>();
+                pageMaps.add(single);
+                activePageId = "page-1";
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"mode\":\"").append(jsonEscape(mode)).append("\"");
+            sb.append(",\"rotationSeconds\":").append(rotationSeconds);
+            sb.append(",\"activePageId\":\"").append(jsonEscape(activePageId)).append("\"");
+            sb.append(",\"pages\":[");
+
+            for (int i = 0; i < pageMaps.size(); i++) {
+                if (i > 0) sb.append(",");
+                Map<?, ?> p = pageMaps.get(i);
+
+                String pageId = String.valueOf(p.getOrDefault("id", "page-" + (i + 1)));
+                String pageName = String.valueOf(p.getOrDefault("name", "Pagina " + (i + 1)));
+                boolean pageEnabled = Boolean.parseBoolean(String.valueOf(p.getOrDefault("enabled", true)));
+                String pageTitle = String.valueOf(p.getOrDefault("title", "§aServerManager"));
+
+                List<String> pageLines = new ArrayList<>();
+                Object rawLines = p.get("lines");
+                if (rawLines instanceof List<?> listObj) {
+                    for (Object lineObj : listObj) {
+                        pageLines.add(String.valueOf(lineObj));
+                    }
+                }
+
+                sb.append("{\"id\":\"").append(jsonEscape(pageId)).append("\"");
+                sb.append(",\"name\":\"").append(jsonEscape(pageName)).append("\"");
+                sb.append(",\"enabled\":").append(pageEnabled);
+                sb.append(",\"title\":\"").append(jsonEscape(pageTitle)).append("\"");
+                sb.append(",\"lines\":[");
+                for (int l = 0; l < pageLines.size(); l++) {
+                    if (l > 0) sb.append(",");
+                    sb.append("\"").append(jsonEscape(pageLines.get(l))).append("\"");
+                }
+                sb.append("]}");
+            }
+
+            sb.append("]}");
+
+            return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
+        } catch (Exception e) {
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Kon scoreboard config niet lezen: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private Response setScoreboardConfig(IHTTPSession session, String uri) {
+        String id = extractModuleIdForScoreboard(uri);
+        if (id == null || id.isBlank()) return badRequest("Ongeldige module id");
+
+        try {
+            Map<String, String> files = new HashMap<>();
+            session.parseBody(files);
+            Map<String, String> p = session.getParms();
+
+            String mode = p.getOrDefault("mode", "manual");
+            int rotationSeconds = Math.max(1, parseIntSafe(p.get("rotationSeconds"), 10));
+            String activePageId = p.getOrDefault("activePageId", "");
+            int pageCount = Math.max(0, parseIntSafe(p.get("pageCount"), 0));
+
+            List<Map<String, Object>> pages = new ArrayList<>();
+            for (int i = 0; i < pageCount; i++) {
+                String prefix = "page." + i + ".";
+                String pageId = p.getOrDefault(prefix + "id", "page-" + (i + 1));
+                String pageName = p.getOrDefault(prefix + "name", "Pagina " + (i + 1));
+                boolean pageEnabled = Boolean.parseBoolean(p.getOrDefault(prefix + "enabled", "true"));
+                String pageTitle = p.getOrDefault(prefix + "title", "§aServerManager");
+                String pageLinesText = p.getOrDefault(prefix + "lines", "");
+
+                List<String> pageLines = new ArrayList<>();
+                if (!pageLinesText.isBlank()) {
+                    try (java.io.BufferedReader br = new java.io.BufferedReader(new StringReader(pageLinesText))) {
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            pageLines.add(line);
+                        }
+                    }
+                }
+
+                Map<String, Object> page = new HashMap<>();
+                page.put("id", pageId);
+                page.put("name", pageName);
+                page.put("enabled", pageEnabled);
+                page.put("title", pageTitle);
+                page.put("lines", pageLines);
+                pages.add(page);
+            }
+
+            // Backward compatibility: old editor can still post title + lines only.
+            if (pages.isEmpty()) {
+                String title = p.getOrDefault("title", "§aServerManager");
+                String linesText = p.getOrDefault("lines", "");
+
+                List<String> lines = new ArrayList<>();
+                if (!linesText.isBlank()) {
+                    try (java.io.BufferedReader br = new java.io.BufferedReader(new StringReader(linesText))) {
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            lines.add(line);
+                        }
+                    }
+                }
+
+                Map<String, Object> single = new HashMap<>();
+                single.put("id", "page-1");
+                single.put("name", "Pagina 1");
+                single.put("enabled", true);
+                single.put("title", title);
+                single.put("lines", lines);
+                pages.add(single);
+            }
+
+            if (activePageId.isBlank()) {
+                activePageId = String.valueOf(pages.get(0).get("id"));
+            }
+
+            File moduleDir = new File(plugin.getDataFolder(), "module-data" + File.separator + id);
+            moduleDir.mkdirs();
+            File configFile = new File(moduleDir, "scoreboard.yml");
+
+            YamlConfiguration cfg = new YamlConfiguration();
+            cfg.set("mode", mode);
+            cfg.set("rotation-seconds", rotationSeconds);
+            cfg.set("active-page", activePageId);
+            cfg.set("pages", pages);
+
+            // Keep legacy keys in sync for compatibility with older module versions.
+            Map<String, Object> activePage = pages.stream()
+                    .filter(pg -> activePageId.equals(String.valueOf(pg.get("id"))))
+                    .findFirst()
+                    .orElse(pages.get(0));
+            cfg.set("title", activePage.get("title"));
+            cfg.set("lines", activePage.get("lines"));
+            cfg.save(configFile);
+
+            // Try hot-apply for running scoreboard module on the Bukkit main thread.
+            // Debounce per module to keep live edits smooth and avoid unnecessary heavy updates.
+            ModuleContainer module = plugin.getModuleManager().getModules().stream()
+                    .filter(m -> id.equals(m.getInternalId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (module != null && module.getModuleInstance() != null && module.getState() == ModuleState.ENABLED) {
+                BukkitTask previous = scoreboardReloadTasks.remove(id);
+                if (previous != null) {
+                    previous.cancel();
+                }
+
+                BukkitTask scheduled = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    try {
+                        java.lang.reflect.Method reload = module.getModuleInstance().getClass().getMethod("reloadFromConfig");
+                        reload.invoke(module.getModuleInstance());
+                    } catch (NoSuchMethodException ignored) {
+                        // Optional hook. If not present, config is still persisted.
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("Kon scoreboard niet live herladen: " + e.getMessage());
+                    } finally {
+                        scoreboardReloadTasks.remove(id);
+                    }
+                }, 3L);
+
+                scoreboardReloadTasks.put(id, scheduled);
+            }
+
+            return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"status\":\"ok\"}");
+        } catch (Exception e) {
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Opslaan mislukt: " + e.getMessage());
+        }
+    }
+
+    private String extractModuleIdForScoreboard(String uri) {
+        // /api/modules/<id>/scoreboard/get|set
+        String prefix = "/api/modules/";
+        if (!uri.startsWith(prefix)) return null;
+        String rest = uri.substring(prefix.length());
+        int slash = rest.indexOf('/');
+        if (slash <= 0) return null;
+        return rest.substring(0, slash);
+    }
+
+    private int parseIntSafe(String value, int fallback) {
+        try {
+            return Integer.parseInt(value);
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 }

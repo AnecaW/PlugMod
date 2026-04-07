@@ -128,8 +128,9 @@
   }
 
   /* ===== Module website loader ===== */
-  function loadModuleWebsite(){ const m = modules[currentModuleIndex]; const frame = document.getElementById('moduleFrame'); const content = document.getElementById('moduleContent'); if(!m||!content||!frame) return; // always load module's web/index.html via server route
-    frame.src = '/modules/website/'+encodeURIComponent(m.internalId)+'/';
+  function loadModuleWebsite(){ const m = modules[currentModuleIndex]; const frame = document.getElementById('moduleFrame'); const content = document.getElementById('moduleContent'); if(!m||!content||!frame) return;
+    const entry = (m.websiteEntry && m.websiteEntry.trim().length > 0) ? m.websiteEntry.trim() : 'web/index.html';
+    frame.src = '/modules/website/'+encodeURIComponent(m.internalId)+'/?entry='+encodeURIComponent(entry);
     // ensure iframe is visible (in case previous code replaced innerHTML)
     content.classList.remove('muted');
   }

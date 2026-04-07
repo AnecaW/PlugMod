@@ -157,11 +157,6 @@ public class ModuleManager {
             ModuleContextImpl context = new ModuleContextImpl(module, moduleDataDir);
             module.setContext(context);
 
-            // ensure module resources from JAR are copied to module-data (only missing files)
-            try {
-                extractResourcesIfNeeded(module);
-            } catch (Exception ignored) {}
-
             module.setState(ModuleState.DISABLED);
             if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
 
@@ -203,11 +198,6 @@ public class ModuleManager {
             // Context aanmaken (data folder per internalId)
             ModuleContextImpl context = new ModuleContextImpl(module, moduleDataDir);
             module.setContext(context);
-
-                // ensure module resources from JAR are copied to module-data (only missing files)
-                try {
-                    extractResourcesIfNeeded(module);
-                } catch (Exception ignored) {}
             module.setState(ModuleState.DISABLED);
             if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
 
@@ -216,50 +206,6 @@ public class ModuleManager {
             module.setState(ModuleState.FAILED);
             if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
             e.printStackTrace();
-        }
-    }
-
-    /**
-     * Copy any files from the module JAR's `resources/` directory into the
-     * module-data/<internalId> folder, but do not overwrite existing files.
-     */
-    private void extractResourcesIfNeeded(ModuleContainer module) {
-        File jarFile = module.getFile();
-        if (jarFile == null || !jarFile.exists()) return;
-
-        File targetBase = new File(moduleDataDir, module.getInternalId());
-        if (!targetBase.exists()) targetBase.mkdirs();
-
-        try (JarFile jar = new JarFile(jarFile)) {
-            Enumeration<JarEntry> entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                String name = entry.getName();
-
-                if (!name.startsWith("resources/")) continue;
-
-                String rel = name.substring("resources/".length());
-                if (rel.isEmpty()) continue;
-
-                File out = new File(targetBase, rel);
-
-                if (entry.isDirectory()) {
-                    if (!out.exists()) out.mkdirs();
-                    continue;
-                }
-
-                File parent = out.getParentFile();
-                if (parent != null && !parent.exists()) parent.mkdirs();
-
-                // skip if already exists
-                if (out.exists()) continue;
-
-                try (InputStream in = jar.getInputStream(entry)) {
-                    Files.copy(in, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-        } catch (Exception e) {
-            plugin.getLogger().warning("Failed to extract resources for module " + module.getInternalId() + ": " + e.getMessage());
         }
     }
 
@@ -382,6 +328,9 @@ public class ModuleManager {
                 info.description = y.getString("description");
                 info.mainClass = y.getString("main");
                 info.apiVersion = y.getInt("api-version", 1);
+                info.websiteEnabled = y.getBoolean("website.enabled", false);
+                info.websiteEntry = y.getString("website.entry", "web/index.html");
+                info.websiteTitle = y.getString("website.title", info.name != null ? info.name : "Module");
 
                 if (info.id == null || info.mainClass == null) {
                     info.error = "Verplichte velden ontbreken (id / main)";
