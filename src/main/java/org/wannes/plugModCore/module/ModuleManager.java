@@ -134,6 +134,15 @@ public class ModuleManager {
     public void loadModuleForce(ModuleContainer module) {
         if (module.getState() == ModuleState.ENABLED) return; // already enabled
 
+        if (module.getInfo() == null || !module.getInfo().valid || module.getInfo().mainClass == null || module.getInfo().mainClass.isBlank()) {
+            if (module.getInfo() != null && (module.getInfo().error == null || module.getInfo().error.isBlank())) {
+                module.getInfo().error = "Main class ontbreekt in module.info.yml";
+            }
+            module.setState(ModuleState.FAILED);
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
+            return;
+        }
+
         try {
             URL jarUrl = module.getFile().toURI().toURL();
 
@@ -175,6 +184,15 @@ public class ModuleManager {
        ========================= */
     public void loadModule(ModuleContainer module) {
         if (module.getState() != ModuleState.UPLOADED) return;
+
+        if (module.getInfo() == null || !module.getInfo().valid || module.getInfo().mainClass == null || module.getInfo().mainClass.isBlank()) {
+            if (module.getInfo() != null && (module.getInfo().error == null || module.getInfo().error.isBlank())) {
+                module.getInfo().error = "Main class ontbreekt in module.info.yml";
+            }
+            module.setState(ModuleState.FAILED);
+            if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
+            return;
+        }
 
         try {
             URL jarUrl = module.getFile().toURI().toURL();
@@ -312,6 +330,9 @@ public class ModuleManager {
         try (JarFile jar = new JarFile(jarFile)) {
 
             JarEntry entry = jar.getJarEntry("module.info.yml");
+            if (entry == null) {
+                entry = jar.getJarEntry("resources/module.info.yml");
+            }
             if (entry == null) {
                 info.error = "module.info.yml ontbreekt";
                 return info;
