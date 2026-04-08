@@ -1,0 +1,20 @@
+Copyright (c) 2026-present AnecaW. All rights reserved.
+
+This software and associated files (the "Software") are proprietary and confidential.
+This license applies to the PlugModCore loader/core code and bundled assets.
+It does not restrict independent third-party module development against the PlugModCore API,
+provided such modules do not copy, modify, or derive from PlugModCore source code.
+
+No permission is granted to use, copy, modify, merge, publish, distribute, sublicense,
+or sell copies of the Software, in whole or in part, without prior written permission
+from the copyright holder.
+
+You may view the source code only for personal reference unless explicit written
+permission is granted for other use.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE
+OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
