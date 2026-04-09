@@ -5,6 +5,13 @@
   <artifactId>plugmodcore</artifactId>
   <name>plugmodcore</name>
   <version>1.0-SNAPSHOT</version>
+  <licenses>
+    <license>
+      <name>Proprietary - All Rights Reserved</name>
+      <url>LICENSE</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
   <build>
     <defaultGoal>clean package</defaultGoal>
     <resources>

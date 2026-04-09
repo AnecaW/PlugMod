@@ -253,10 +253,19 @@ public class ModuleManager {
        ========================= */
     public void enableModule(ModuleContainer module) {
         if (module.getState() != ModuleState.DISABLED) return;
+        final Module snapshot = module.getModuleInstance();
+        final org.wannes.plugModCore.api.ModuleContext ctx = module.getContext();
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             try {
-                module.getModuleInstance().onEnable(module.getContext());
+                if (snapshot == null) {
+                    plugin.getLogger().warning("Module instance was null when enabling: " + module.getInternalId());
+                    module.setState(ModuleState.FAILED);
+                    if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.FAILED.name());
+                    return;
+                }
+
+                snapshot.onEnable(ctx);
                 module.setState(ModuleState.ENABLED);
                 plugin.getLogger().info("Module enabled: " + module.getInternalId());
                 if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.ENABLED.name());
@@ -271,10 +280,19 @@ public class ModuleManager {
 
     public void disableModule(ModuleContainer module) {
         if (module.getState() != ModuleState.ENABLED) return;
+        final Module snapshot = module.getModuleInstance();
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             try {
-                module.getModuleInstance().onDisable();
+                if (snapshot == null) {
+                    plugin.getLogger().warning("Module instance was null when disabling: " + module.getInternalId());
+                    // ensure visible state is disabled
+                    module.setState(ModuleState.DISABLED);
+                    if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
+                    return;
+                }
+
+                snapshot.onDisable();
                 module.setState(ModuleState.DISABLED);
                 plugin.getLogger().info("Module disabled: " + module.getInternalId());
                 if (registryManager != null) registryManager.setModuleState(module.getInternalId(), ModuleState.DISABLED.name());
