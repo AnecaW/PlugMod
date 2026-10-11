@@ -1,0 +1,10 @@
+modules:
+  auto-load-on-startup: true
+  allow-hot-reload: true
+  allow-live-upload: true
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+  # Generated on first startup. Browser username: admin; password: this token.
+  access-token: ""

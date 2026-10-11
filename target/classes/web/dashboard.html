@@ -1,16 +1,17 @@
 <!doctype html>
 <html lang="nl">
   <head>
+<link rel="stylesheet" href="/web/design-system.css">
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>PlugMod — Dashboard</title>
+    <title>PlugModCore — Dashboard</title>
     <link rel="stylesheet" href="/web/styles.css">
   </head>
   <body>
     <div class="app">
       <aside class="sidebar">
         <h2>Navigation</h2>
-        <button id="navHome">🏠 Home</button>
+        <button id="navHome">Home</button>
         <div id="moduleList"></div>
       </aside>
 
@@ -21,7 +22,7 @@
           <div class="center">
             <div class="title">Upload Modules</div>
             <div class="upload-box">
-              <input type="file" multiple id="fileInput"><br>
+              <input type="file" multiple id="fileInput" aria-label="Module JAR files"><br>
               <button class="btn blue" id="uploadBtn">Upload</button>
             </div>
           </div>
@@ -41,10 +42,10 @@
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
     <!-- Confirmation modal (used by future JS modal replacement) -->
-    <div id="confirmModal" class="hidden" role="dialog" aria-modal="true">
-      <div class="modal" style="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);padding:18px;border-radius:8px;min-width:320px;z-index:1200;">
-        <div id="confirmMessage" style="margin-bottom:12px;color:var(--muted)"></div>
-        <div style="text-align:right">
+    <div id="confirmModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="confirmMessage">
+      <div class="modal">
+        <div id="confirmMessage"></div>
+        <div class="modal-actions">
           <button id="confirmCancel" class="btn gray">Annuleer</button>
           <button id="confirmOk" class="btn red">Verwijder</button>
         </div>

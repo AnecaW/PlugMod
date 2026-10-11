@@ -2,10 +2,12 @@ D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\config\CoreConfig.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\config\SecurityConfig.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleClassLoader.java
+D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleCommand.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleContainer.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleContextImpl.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleInfo.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleManager.java
+D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleServiceRegistry.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleState.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\PlugModCore.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\security\PublicKeyRegistry.java
@@ -22,4 +24,5 @@ D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\web\routes\RootRoute.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\web\routes\UploadRoute.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\web\WebContext.java
+D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\web\WebListenerLifecycle.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\web\WebServer.java

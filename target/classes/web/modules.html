@@ -1,16 +1,11 @@
 <!doctype html>
 <html lang="nl">
 <head>
+<link rel="stylesheet" href="/web/design-system.css">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>PlugModCore Modules</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 16px; }
-    ul { list-style: none; padding: 0; }
-    li { margin: 6px 0; }
-    form { display: inline; }
-    button { margin-left: 6px; }
-  </style>
+  <link rel="stylesheet" href="/web/module-list.css">
 </head>
 <body>
 
@@ -21,6 +16,16 @@
 <p><a href="/">Terug naar dashboard</a> | <a href="/modules">Refresh</a></p>
 
 <script>
+(function(){
+if(window.pmModuleFormsBound) return;
+window.pmModuleFormsBound = true;
+const pendingModules = new Set();
+function setBusy(id, busy){
+  for(const form of document.querySelectorAll('form.module-action')) {
+    const row = form.closest('li');
+    if(row && row.getAttribute('data-id') === id) for(const button of form.querySelectorAll('button')) button.disabled = busy;
+  }
+}
 // Intercept forms with class 'module-action' and perform POST via fetch.
 // After action, poll /modules for the updated state of the affected module and
 // replace only the module list fragment so the rest of the page remains intact.
@@ -34,9 +39,12 @@ document.addEventListener('submit', async function(e){
   const li = form.closest('li');
   const moduleId = li ? li.getAttribute('data-id') : null;
   const prevState = li ? li.getAttribute('data-state') : null;
+  if(!moduleId || pendingModules.has(moduleId)) return;
+  pendingModules.add(moduleId); setBusy(moduleId,true);
 
   try {
-    await fetch(actionUrl, { method: 'POST', body: new FormData(form), redirect: 'follow' });
+    const actionResponse = await fetch(actionUrl, { method: 'POST', body: new FormData(form), redirect: 'follow' });
+    if(!actionResponse.ok) throw new Error(await actionResponse.text());
 
     const timeoutMs = 5000;
     const intervalMs = 300;
@@ -57,6 +65,7 @@ document.addEventListener('submit', async function(e){
 
         // Replace fragment when state changed or on last iteration
         oldFragment.replaceWith(newFragment.cloneNode(true));
+        for(const id of pendingModules) setBusy(id,true);
 
         if (newState && newState !== prevState) return;
       }
@@ -66,8 +75,11 @@ document.addEventListener('submit', async function(e){
 
   } catch (err) {
     alert('Actie mislukt: ' + err);
+  } finally {
+    pendingModules.delete(moduleId); setBusy(moduleId,false);
   }
 });
+})();
 </script>
 
 </body>

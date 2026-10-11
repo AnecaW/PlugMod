@@ -31,7 +31,7 @@ public class PlugModCore extends JavaPlugin {
     private CoreConfig coreConfig;
     private SecurityConfig securityConfig;
 
-    private WebServer webServer;
+    private org.wannes.plugModCore.web.WebListenerLifecycle webServer;
     private ModuleManager moduleManager;
     private RegistryManager registryManager;
 
@@ -73,22 +73,15 @@ public class PlugModCore extends JavaPlugin {
 
         moduleManager = new ModuleManager(this, registryManager);
         moduleManager.scanModules();
+        org.wannes.plugModCore.module.ModuleCommand command = new org.wannes.plugModCore.module.ModuleCommand(moduleManager, this);
+        java.util.Objects.requireNonNull(getCommand("module")).setExecutor(command);
+        getCommand("module").setTabCompleter(command);
 
         // Defer restoring/loading/enabling modules until the server is ready.
         // Run on the main thread slightly later to avoid lifecycle/timing issues.
         // Use 20 ticks to give the server time to initialize services.
         Bukkit.getScheduler().runTaskLater(this, () -> {
-            // restore last saved states (loads + enables as necessary)
-            moduleManager.restoreStatesOnStartup();
-
-            // If autoLoadModules is enabled, load any modules that remain UPLOADED
-            if (coreConfig != null && coreConfig.autoLoadModules) {
-                for (ModuleContainer m : moduleManager.getModules()) {
-                    if (m.getState() == org.wannes.plugModCore.module.ModuleState.UPLOADED) {
-                        moduleManager.loadModule(m);
-                    }
-                }
-            }
+            moduleManager.restoreStartupAsync(coreConfig.autoLoadModules);
         }, 20L);
 
         getLogger().info("Modules gevonden: " + moduleManager.getModules().size());
@@ -109,6 +102,17 @@ public class PlugModCore extends JavaPlugin {
     public ModuleManager getModuleManager() {
         return moduleManager;
     }
+    public CoreConfig getCoreConfig() { return coreConfig; }
+
+    public int getListeningWebPort() { return webServer == null ? -1 : webServer.port(); }
+
+    public synchronized void changeWebPort(int port) throws IOException {
+        if (!coreConfig.webEnabled) throw new IOException("WebUI is disabled in core-config.yml; enable it and restart first.");
+        if (webServer == null) throw new IOException("WebUI lifecycle is unavailable.");
+        webServer.change(port, new ConfigLoader(this)::saveWebPort);
+        coreConfig.webPort = port;
+        getLogger().info("WebUI listening on http://" + coreConfig.webHost + ":" + webServer.port());
+    }
 
     /* =========================
        HELPERS
@@ -128,7 +132,10 @@ public class PlugModCore extends JavaPlugin {
     private void saveResourceIfNotExists(String resourcePath, String outputName) {
         File outFile = new File(getDataFolder(), outputName);
         if (!outFile.exists()) {
-            saveResource(resourcePath, false);
+            try (InputStream in = getResource(resourcePath)) {
+                if (in == null) throw new IOException("Missing resource " + resourcePath);
+                Files.copy(in, outFile.toPath());
+            } catch (IOException e) { throw new IllegalStateException("Cannot create " + outputName, e); }
         }
     }
 
@@ -141,17 +148,12 @@ public class PlugModCore extends JavaPlugin {
             // Ensure packaged web assets are deployed into the plugin data folder and overwritten
             deployWebAssets();
 
-            webServer = new WebServer(
-                    this,                       // <<< BELANGRIJK
-                    coreConfig.webHost,
-                    coreConfig.webPort
-            );
-
-            webServer.startServer();
+            webServer = new org.wannes.plugModCore.web.WebListenerLifecycle(port -> new WebServer(this, coreConfig.webHost, port));
+            webServer.change(coreConfig.webPort, port -> {});
             getLogger().info(
                     "Webserver gestart op http://" +
                             coreConfig.webHost + ":" +
-                            coreConfig.webPort
+                            webServer.port()
             );
 
         } catch (Exception e) {
@@ -163,8 +165,7 @@ public class PlugModCore extends JavaPlugin {
     private void deployWebAssets() {
         File webDir = new File(getDataFolder(), "web");
 
-        // remove existing web dir so we fully overwrite every start
-        deleteRecursive(webDir);
+        // Update packaged assets while preserving unrelated files in the web directory.
         webDir.mkdirs();
 
         // Try to copy resources from classpath 'web/' directory.
@@ -177,7 +178,7 @@ public class PlugModCore extends JavaPlugin {
                 if ("file".equals(protocol)) {
                     // running from IDE/classes directory
                     Path src = Paths.get(webResource.toURI());
-                    Files.walk(src).forEach(p -> {
+                    try (java.util.stream.Stream<Path> paths = Files.walk(src)) { paths.forEach(p -> {
                         try {
                             Path rel = src.relativize(p);
                             File dest = new File(webDir, rel.toString());
@@ -190,7 +191,7 @@ public class PlugModCore extends JavaPlugin {
                         } catch (IOException ex) {
                             getLogger().severe("Fout bij kopiëren resource: " + ex.getMessage());
                         }
-                    });
+                    }); }
 
                     return;
                 }
@@ -199,8 +200,7 @@ public class PlugModCore extends JavaPlugin {
             // Fallback: running from JAR - extract entries starting with 'web/'
             CodeSource src = getClass().getProtectionDomain().getCodeSource();
             if (src != null) {
-                String jarPath = src.getLocation().toURI().getPath();
-                try (JarFile jar = new JarFile(URLDecoder.decode(jarPath, "UTF-8"))) {
+                try (JarFile jar = new JarFile(Paths.get(src.getLocation().toURI()).toFile())) {
                     Enumeration<JarEntry> entries = jar.entries();
                     while (entries.hasMoreElements()) {
                         JarEntry e = entries.nextElement();
@@ -233,19 +233,13 @@ public class PlugModCore extends JavaPlugin {
         }
     }
 
-    private void deleteRecursive(File f) {
-        if (f == null || !f.exists()) return;
-        if (f.isDirectory()) {
-            File[] children = f.listFiles();
-            if (children != null) for (File c : children) deleteRecursive(c);
-        }
-        try { f.delete(); } catch (Exception ignored) {}
-    }
-
     @Override
     public void onDisable() {
         if (webServer != null) {
             webServer.stop();
         }
+        if (moduleManager != null) moduleManager.shutdown();
     }
 }
+
+

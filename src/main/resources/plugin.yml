@@ -5,3 +5,12 @@ api-version: '1.21'
 load: STARTUP
 authors: [ Wannes Aneca ]
 description: PlugModCore
+commands:
+  module:
+    description: Manage runtime modules
+    permission: plugmodcore.manage
+    usage: /module list | info/load/unload/enable/disable/reload <module> | webui port [1-65535]
+permissions:
+  plugmodcore.manage:
+    description: Manage Server Manager modules
+    default: op

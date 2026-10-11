@@ -4,6 +4,11 @@ import java.time.Instant;
 import java.util.List;
 
 public class ModuleInfo {
+    public List<String> dependencies = List.of();
+    public List<String> exports = List.of();
+    public List<String> pluginDependencies = List.of();
+    public List<String> requiredApiClasses = List.of();
+    public java.util.Map<String, String> requiredServices = java.util.Map.of();
 
     /* Identiteit */
     public String id;

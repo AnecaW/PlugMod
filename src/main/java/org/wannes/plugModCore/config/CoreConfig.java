@@ -9,4 +9,5 @@ public class CoreConfig {
     public String webHost = "0.0.0.0";
     public int webPort = 8080;
     public boolean webEnabled = true;
+    public String webAccessToken;
 }

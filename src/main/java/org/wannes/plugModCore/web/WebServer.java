@@ -1,6 +1,7 @@
 package org.wannes.plugModCore.web;
 
 import fi.iki.elonen.NanoHTTPD;
+import org.bukkit.Bukkit;
 import org.wannes.plugModCore.PlugModCore;
 import org.wannes.plugModCore.module.ModuleContainer;
 import org.wannes.plugModCore.module.ModuleInfo;
@@ -20,7 +21,7 @@ import java.util.Enumeration;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-public class WebServer extends NanoHTTPD {
+public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listener {
 
     private final PlugModCore plugin;
 
@@ -31,10 +32,38 @@ public class WebServer extends NanoHTTPD {
 
     public void startServer() throws IOException {
         start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        verifyListener();
+    }
+
+    @Override public void start() throws IOException { startServer(); }
+    @Override public int port() { return getListeningPort(); }
+
+    private void verifyListener() throws IOException {
+        java.net.InetAddress address = java.net.InetAddress.getByName(getHostname());
+        if (address.isAnyLocalAddress()) address = java.net.InetAddress.getByName(address instanceof java.net.Inet6Address ? "::1" : "127.0.0.1");
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(address, getListeningPort()), 2000);
+            socket.setSoTimeout(2000);
+            socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            String response = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII)).readLine();
+            if (response == null || !response.startsWith("HTTP/1.1 401")) throw new IOException("New WebUI listener did not return the expected authenticated HTTP response.");
+        }
     }
 
     @Override
     public Response serve(IHTTPSession session) {
+        if (!authorized(session)) {
+            Response denied = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Server Manager login required");
+            denied.addHeader("WWW-Authenticate", "Basic realm=\"Server Manager\"");
+            return denied;
+        }
+        String origin = session.getHeaders().get("origin");
+        if (session.getMethod() != Method.GET && origin != null) {
+            try {
+                java.net.URI source = java.net.URI.create(origin);
+                if (!source.getAuthority().equalsIgnoreCase(session.getHeaders().get("host"))) return badRequest("Cross-origin request rejected");
+            } catch (RuntimeException e) { return badRequest("Invalid origin"); }
+        }
 
         String uri = session.getUri();
         NanoHTTPD.Method method = session.getMethod();
@@ -48,6 +77,7 @@ public class WebServer extends NanoHTTPD {
         if (uri.startsWith("/modules/unload/") && method == NanoHTTPD.Method.POST) return unloadModule(uri);
         if (uri.startsWith("/modules/enable/") && method == NanoHTTPD.Method.POST) return enableModule(uri);
         if (uri.startsWith("/modules/disable/") && method == NanoHTTPD.Method.POST) return disableModule(uri);
+        if (uri.startsWith("/modules/reload/") && method == NanoHTTPD.Method.POST) return doAction(uri, "/modules/reload/");
         if (uri.startsWith("/modules/delete/") && method == NanoHTTPD.Method.POST) return deleteModule(uri);
 
         if (uri.startsWith("/api/modules/")) return forwardModuleApi(session);
@@ -57,6 +87,20 @@ public class WebServer extends NanoHTTPD {
         if (uri.startsWith("/modules/website/") && method == NanoHTTPD.Method.GET) return serveModuleWebsite(uri);
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404 Not Found");
+    }
+    private boolean authorized(IHTTPSession session) {
+        String token = plugin.getCoreConfig().webAccessToken;
+        if (token == null || token.isBlank()) return false;
+        String header = session.getHeaders().getOrDefault("authorization", "");
+        String supplied = "";
+        if (header.startsWith("Bearer ")) supplied = header.substring(7);
+        else if (header.startsWith("Basic ")) {
+            try {
+                String credentials = new String(java.util.Base64.getDecoder().decode(header.substring(6)), StandardCharsets.UTF_8);
+                if (credentials.startsWith("admin:")) supplied = credentials.substring(6);
+            } catch (IllegalArgumentException e) { return false; }
+        }
+        return java.security.MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8));
     }
 
     /* =========================
@@ -80,6 +124,7 @@ public class WebServer extends NanoHTTPD {
        ========================= */
     @SuppressWarnings("deprecation")
     private Response handleModuleUpload(IHTTPSession session) {
+        if (!plugin.getCoreConfig().allowLiveUpload) return badRequest("Live upload is disabled");
         try {
             Map<String, String> files = new HashMap<>();
             session.parseBody(files);
@@ -116,42 +161,58 @@ public class WebServer extends NanoHTTPD {
             final String chosenInternalId = internalId;
 
             File target = new File(modulesDir, chosenInternalId + ".jar");
-            Files.copy(tempFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.copy(tempFile.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } finally {
+                // Try to delete NanoHTTPD temporary file. On Windows the file
+                // may be briefly locked; retry with a small GC+sleep between attempts.
+                if (tempFile.exists()) {
+                    boolean deleted = false;
+                    for (int i = 0; i < 5; i++) {
+                        try {
+                            deleted = tempFile.delete();
+                        } catch (Exception ignored) {
+                        }
+                        if (deleted) break;
+                        System.gc();
+                        try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+                    }
+                    if (!deleted) {
+                        plugin.getLogger().warning("could not delete temporary file: " + tempFile.getAbsolutePath());
+                    }
+                }
+            }
 
             String sha256 = org.wannes.plugModCore.util.HashUtils.sha256(target);
             if (plugin.getRegistryManager() != null) {
                 plugin.getRegistryManager().registerNew(chosenInternalId, originalFileName, sha256);
             }
 
-            plugin.getModuleManager().scanModules();
-            // Ensure upload only registers the file and marks it UPLOADED.
-            // Do NOT attempt to load or enable the module here; loading should
-            // be an explicit action by the user or controlled by the auto-load
-            // configuration on startup.
-            try {
-                ModuleManager mgr = plugin.getModuleManager();
-                ModuleContainer mc = mgr.getModules().stream()
-                        .filter(x -> x.getInternalId().equals(chosenInternalId))
-                        .findFirst().orElse(null);
-                if (mc != null) {
-                    if (mc.getInfo() != null && mc.getInfo().valid) {
-                        mc.setState(ModuleState.UPLOADED);
-                        if (plugin.getRegistryManager() != null) {
-                            plugin.getRegistryManager().setModuleState(chosenInternalId, ModuleState.UPLOADED.name());
+            // Schedule scanning and state setting on the Bukkit main thread to
+            // avoid modifying module lists from NanoHTTPD worker threads.
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                try {
+                    plugin.getModuleManager().scanModules();
+
+                    ModuleManager mgr = plugin.getModuleManager();
+                    ModuleContainer mc = mgr.getModules().stream()
+                            .filter(x -> x.getInternalId().equals(chosenInternalId))
+                            .findFirst().orElse(null);
+                    if (mc != null) {
+                        if (mc.getInfo() != null && mc.getInfo().valid) {
+                            mc.setState(ModuleState.UPLOADED);
+                            if (plugin.getRegistryManager() != null) {
+                                plugin.getRegistryManager().setModuleState(chosenInternalId, ModuleState.UPLOADED.name());
+                            }
+                        } else {
+                            mc.setState(ModuleState.FAILED);
+                            if (plugin.getRegistryManager() != null) {
+                                plugin.getRegistryManager().setModuleState(chosenInternalId, ModuleState.FAILED.name());
+                            }
                         }
-                    } else {
-                        mc.setState(ModuleState.FAILED);
-                        if (plugin.getRegistryManager() != null) {
-                            plugin.getRegistryManager().setModuleState(chosenInternalId, ModuleState.FAILED.name());
-                        }
-                        String reason = (mc.getInfo() != null && mc.getInfo().error != null)
-                                ? mc.getInfo().error
-                                : "module.info.yml is ongeldig";
-                        String json = "{\"status\":\"error\",\"id\":\"" + jsonEscape(chosenInternalId) + "\",\"message\":\"" + jsonEscape(reason) + "\"}";
-                        return newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json", json);
                     }
-                }
-            } catch (Exception ignored) {}
+                } catch (Exception ignored) {}
+            });
             plugin.getLogger().info("Module uploaded: " + chosenInternalId);
 
             String json = "{\"status\":\"ok\",\"id\":\"" + jsonEscape(chosenInternalId) + "\"}";
@@ -203,6 +264,7 @@ public class WebServer extends NanoHTTPD {
 
             if (m.getState() == ModuleState.ENABLED) {
                 action(listHtml, "Disable", "/modules/disable/" + m.getInternalId());
+                action(listHtml, "Reload", "/modules/reload/" + m.getInternalId());
             }
 
             if (m.getState() == ModuleState.FAILED) {
@@ -236,33 +298,31 @@ public class WebServer extends NanoHTTPD {
        ACTIONS
        ========================= */
     private Response enableModule(String uri) {
-        return doAction(uri, "/modules/enable/", m -> plugin.getModuleManager().enableModule(m));
+        return doAction(uri, "/modules/enable/");
     }
 
     private Response disableModule(String uri) {
-        return doAction(uri, "/modules/disable/", m -> plugin.getModuleManager().disableModule(m));
+        return doAction(uri, "/modules/disable/");
     }
 
     private Response loadModule(String uri) {
-        return doAction(uri, "/modules/load/", m -> plugin.getModuleManager().loadModule(m));
+        return doAction(uri, "/modules/load/");
     }
 
     private Response unloadModule(String uri) {
-        return doAction(uri, "/modules/unload/", m -> plugin.getModuleManager().unloadModule(m));
+        return doAction(uri, "/modules/unload/");
     }
 
     private Response deleteModule(String uri) {
-        return doAction(uri, "/modules/delete/", m -> {
-            plugin.getModuleManager().deleteModule(m);
-            plugin.getModuleManager().scanModules();
-        });
+        return doAction(uri, "/modules/delete/");
     }
 
     /* =========================
        HELPERS
        ========================= */
-    private Response doAction(String uri, String prefix, java.util.function.Consumer<ModuleContainer> action) {
-        String id = uri.replace(prefix, "");
+    private Response doAction(String uri, String prefix) {
+        String id = uri.substring(prefix.length());
+        if (id.isBlank() || id.contains("/")) return badRequest("Invalid single module ID");
 
         ModuleContainer module = plugin.getModuleManager()
                 .getModules()
@@ -274,7 +334,12 @@ public class WebServer extends NanoHTTPD {
         if (module == null) return badRequest("Module niet gevonden");
 
         try {
-            action.accept(module);
+            // Schedule the potentially-heavy module action on the Bukkit main thread
+            // to avoid races and performing classloading/file IO on NanoHTTPD threads.
+            Bukkit.getScheduler().callSyncMethod(plugin, () -> {
+                return plugin.getModuleManager().executeAsync(prefix.split("/")[2], module);
+            }).get(30, java.util.concurrent.TimeUnit.SECONDS).get(30, java.util.concurrent.TimeUnit.SECONDS);
+
             return redirect("/modules");
         } catch (Exception e) {
             String message = (e.getMessage() != null && !e.getMessage().isBlank())
@@ -310,11 +375,11 @@ public class WebServer extends NanoHTTPD {
 
             // first try data folder (deployed assets)
             File f = new File(plugin.getDataFolder(), "web" + File.separator + rel);
+            if (!f.toPath().toAbsolutePath().normalize().startsWith(new File(plugin.getDataFolder(), "web").toPath().toAbsolutePath().normalize())) return badRequest("Invalid path");
             if (f.exists() && f.isFile()) {
                 byte[] data = Files.readAllBytes(f.toPath());
                 String ct = contentTypeByName(rel);
-                String body = new String(data, StandardCharsets.UTF_8);
-                return newFixedLengthResponse(Response.Status.OK, ct, body);
+                return newFixedLengthResponse(Response.Status.OK, ct, new java.io.ByteArrayInputStream(data), data.length);
             }
 
             // fallback to packaged resource in classpath
@@ -373,8 +438,7 @@ public class WebServer extends NanoHTTPD {
                 }
 
                 String ct = contentTypeByName(entry);
-                String body = new String(data, StandardCharsets.UTF_8);
-                return newFixedLengthResponse(Response.Status.OK, ct, body);
+                return newFixedLengthResponse(Response.Status.OK, ct, new java.io.ByteArrayInputStream(data), data.length);
             }
 
         } catch (Exception e) {
@@ -429,6 +493,8 @@ public class WebServer extends NanoHTTPD {
             sb.append("\"internalId\":\"").append(jsonEscape(m.getInternalId())).append("\"");
             sb.append(",\"fileName\":\"").append(jsonEscape(m.getFileName())).append("\"");
             sb.append(",\"state\":\"").append(jsonEscape(String.valueOf(m.getState()))).append("\"");
+            sb.append(",\"loaded\":").append(m.getModuleInstance() != null);
+            sb.append(",\"version\":\"").append(jsonEscape(info != null ? info.version : null)).append("\"");
 
             if (info != null) {
                 sb.append(",\"name\":\"").append(jsonEscape(info.name)).append("\"");
@@ -488,14 +554,6 @@ public class WebServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Module niet gevonden");
             }
 
-            if (module.getModuleInstance() == null || module.getState() != ModuleState.ENABLED) {
-                return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Module is niet actief");
-            }
-
-            if (!(module.getModuleInstance() instanceof ModuleWebApi webApi)) {
-                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Module ondersteunt geen web API");
-            }
-
             Map<String, String> params = new HashMap<>();
             if (session.getMethod() == Method.POST || session.getMethod() == Method.PUT || session.getMethod() == Method.PATCH) {
                 Map<String, String> files = new HashMap<>();
@@ -503,12 +561,31 @@ public class WebServer extends NanoHTTPD {
             }
             params.putAll(session.getParms());
 
-            ModuleWebApi.ApiResponse response = webApi.handleApiRequest(session.getMethod().name(), path, params);
-            if (response == null) {
-                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Endpoint niet gevonden");
-            }
+            // Perform the instance/state checks AND invoke the module API handler
+            // on the Bukkit main thread to avoid races and executing module code
+            // on the NanoHTTPD worker thread.
+            try {
+                java.util.concurrent.Future<ModuleWebApi.ApiResponse> future = Bukkit.getScheduler().callSyncMethod(plugin, () -> {
+                    if (module.getModuleInstance() == null || module.getState() != ModuleState.ENABLED) {
+                        return ModuleWebApi.ApiResponse.badRequest("Module is niet actief");
+                    }
+                    if (!(module.getModuleInstance() instanceof ModuleWebApi)) {
+                        return ModuleWebApi.ApiResponse.notFound("Module ondersteunt geen web API");
+                    }
+                    ModuleWebApi webApi = (ModuleWebApi) module.getModuleInstance();
+                    try {
+                        ModuleWebApi.ApiResponse res = webApi.handleApiRequest(session.getMethod().name(), path, params);
+                        return res == null ? ModuleWebApi.ApiResponse.notFound("Endpoint niet gevonden") : res;
+                    } catch (Exception e) {
+                        return ModuleWebApi.ApiResponse.error("Module API fout: " + e.getMessage());
+                    }
+                });
 
-            return newFixedLengthResponse(toStatus(response.getStatusCode()), response.getContentType(), response.getBody());
+                ModuleWebApi.ApiResponse response = future.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                return newFixedLengthResponse(toStatus(response.getStatusCode()), response.getContentType(), response.getBody());
+            } catch (Exception e) {
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Module API fout: " + e.getMessage());
+            }
         } catch (Exception e) {
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Module API fout: " + e.getMessage());
         }
@@ -521,3 +598,4 @@ public class WebServer extends NanoHTTPD {
         return Response.Status.OK;
     }
 }
+

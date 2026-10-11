@@ -9,11 +9,11 @@ import java.time.Instant;
 
 public class RegistryManager {
 
-    private final PlugModCore plugin;
+    private final org.bukkit.plugin.Plugin plugin;
     private final File file;
     private final YamlConfiguration yaml;
 
-    public RegistryManager(PlugModCore plugin) {
+    public RegistryManager(org.bukkit.plugin.Plugin plugin) {
         this.plugin = plugin;
         File dir = new File(plugin.getDataFolder(), "registry");
         dir.mkdirs();

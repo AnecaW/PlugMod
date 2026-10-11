@@ -1,0 +1,63 @@
+@font-face{
+  font-family: 'Minecraft';
+  src: url('fonts/Minecraft.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+/* Toolbar styles */
+.minecraft-text-editor .toolbar{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.toolbar .color-row{display:flex;flex-wrap:wrap;gap:4px}
+.color-swatch{width:20px;height:16px;border-radius:3px;border:1px solid rgba(0,0,0,0.06);cursor:pointer;padding:0}
+.color-swatch:focus{outline:2px solid var(--accent)}
+/* Magic swatch: rainbow preview and subtle pulse so user recognizes special behavior */
+/* magic-swatch removed */
+.effects{display:flex;gap:6px}
+.eff-btn{padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center;color:var(--icon);transition:color .12s,background .12s,transform .06s}
+.eff-btn:hover{background:rgba(0,0,0,0.04)}
+.eff-btn:active{transform:translateY(1px)}
+.toolbar .color-swatch[aria-pressed="true"], .eff-btn[aria-pressed="true"]{box-shadow:0 0 0 2px var(--selected)}
+.eff-btn svg{width:16px;height:16px;display:block;stroke:currentColor;fill:currentColor}
+.eff-btn:hover{color:var(--icon-hover)}
+
+
+/* font-based glyph icons for effects (use Minecraft font when available) */
+.font-icon{font-family:'Minecraft','Press Start 2P', ui-monospace, monospace;font-size:13px;line-height:1;display:inline-block;width:18px;text-align:center;color:currentColor}
+.font-icon.bold-icon{font-weight:700}
+.font-icon.underline-icon{text-decoration:underline}
+.font-icon.strike-icon{text-decoration:line-through;position:relative}
+.font-icon.strike-icon::after{content:'';position:absolute;left:2px;right:2px;top:50%;height:2px;background:currentColor;transform:translateY(-50%)}
+.star-icon{width:14px;height:14px;display:block}
+/* Italic glyph using Minecraft/Press Start font */
+.font-icon.italic-icon{font-style:italic;font-family:'Minecraft','Press Start 2P',monospace;font-size:14px}
+
+/* Magic obfuscation spans in preview — JS will animate the characters rapidly */
+.mc-magic{display:inline-block;min-width:0}
+/* Editor-side magic spans (per-character) */
+.mc-magic-editor{display:inline-block;min-width:0}
+/* ensure editor obfuscated glyphs use the Minecraft/Press Start font for fidelity */
+.mc-magic-editor{font-family:'Minecraft','Press Start 2P', ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Segoe UI Mono', monospace}
+
+
+/* Editor outline helpers: only affect the editing surface, not the preview */
+.editor-field.outline-black, #title.outline-black{ /* white text -> black outline */
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+}
+.editor-field.outline-white, #title.outline-white{ /* black text -> white outline */
+  text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
+}
+
+/* reset spin animation */
+.eff-btn.spin .reset-icon{animation:spin 0.8s linear}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+
+.editor-field{flex:1}
+.editor-field{flex:1;min-height:28px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;font-size:14px;outline:none}
+.editor-field:empty:before{content:attr(data-placeholder);color:var(--muted);font-size:13px}
+.editor-field:focus{box-shadow:0 0 0 2px var(--selected)}
+.editor-field:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.minecraft-text-editor .row-top{display:flex;gap:8px;align-items:center}.minecraft-text-editor .editor-field{white-space:pre-wrap}.minecraft-text-editor{display:flex;flex-direction:column;gap:6px}
+
+/* Isolate the original toolbar presentation from host-page toolbar rules. */
+.minecraft-text-editor .toolbar{align-items:stretch;justify-content:flex-start}.minecraft-text-editor .toolbar .eff-btn{color:var(--icon);background:var(--card)}.minecraft-text-editor .toolbar .eff-btn:hover{color:var(--icon-hover);background:rgba(0,0,0,0.04)}
