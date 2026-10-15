@@ -34,6 +34,8 @@ public class PlugModCore extends JavaPlugin {
     private org.wannes.plugModCore.web.WebListenerLifecycle webServer;
     private ModuleManager moduleManager;
     private RegistryManager registryManager;
+    private boolean allocateNewWebPort;
+    private org.wannes.plugModCore.network.PaperNetwork network;
 
     @Override
     public void onEnable() {
@@ -53,6 +55,7 @@ public class PlugModCore extends JavaPlugin {
         /* =========================
            2. CONFIG TEMPLATES
            ========================= */
+        allocateNewWebPort=!Files.isRegularFile(getDataFolder().toPath().resolve("core-config.yml"));
         saveDefaultConfigFiles();
 
         /* =========================
@@ -89,7 +92,12 @@ public class PlugModCore extends JavaPlugin {
         /* =========================
            5. WEBSERVER
            ========================= */
-        if (coreConfig.webEnabled) {
+        try { network = new org.wannes.plugModCore.network.PaperNetwork(this); }
+        catch (Exception failure) { getLogger().log(java.util.logging.Level.SEVERE,"Network agent startup failed; standalone operation retained unless a committed network link exists",failure); }
+        boolean linkedOnDisk = Files.exists(getDataFolder().toPath().resolve("network/link-confirmed.json"));
+        try { var file=getDataFolder().toPath().resolve("network/network-state.json");if(Files.exists(file)){var stored=org.wannes.plugmodcore.network.Protocol.JSON.fromJson(Files.readString(file),com.google.gson.JsonObject.class);if(stored.get("schema").getAsInt()!=1)throw new IllegalArgumentException("Unknown network-state schema");linkedOnDisk=linkedOnDisk||stored.get("linked").getAsBoolean();} }
+        catch(Exception failure){linkedOnDisk=true;getLogger().severe("Cannot verify network state; standalone WebUI stays closed until local recovery");}
+        if (coreConfig.webEnabled && (!linkedOnDisk || network!=null&&!network.isManagementConnected())) {
             startWebServer();
         }
 
@@ -103,15 +111,20 @@ public class PlugModCore extends JavaPlugin {
         return moduleManager;
     }
     public CoreConfig getCoreConfig() { return coreConfig; }
+    public org.wannes.plugModCore.network.PaperNetwork getNetwork() { return network; }
+    public void restartNetworkAgentAfterLocalRecovery() throws Exception {if(network!=null)network.close();network=new org.wannes.plugModCore.network.PaperNetwork(this);}
+    public void stopStandaloneWeb() { if(getListeningWebPort()<0)return;if(webServer!=null)webServer.stop();getLogger().info("Standalone WebUI stopped after committed proxy pairing; local modules remain active"); }
+    public void restoreStandaloneWeb() throws IOException {if(network!=null&&network.isManagementConnected())throw new IOException("Authenticated proxy contact active; standalone listener stays closed");if(coreConfig.webEnabled){startWebServer();if(getListeningWebPort()<0)throw new IOException("Standalone listener could not be restored; correct bind/configuration and retry locally");}}
 
     public int getListeningWebPort() { return webServer == null ? -1 : webServer.port(); }
 
     public synchronized void changeWebPort(int port) throws IOException {
+        if (network != null && network.isManagementConnected()) throw new IOException("Backend is network-managed; unlink locally or through the proxy before restoring standalone WebUI");
         if (!coreConfig.webEnabled) throw new IOException("WebUI is disabled in core-config.yml; enable it and restart first.");
         if (webServer == null) throw new IOException("WebUI lifecycle is unavailable.");
         webServer.change(port, new ConfigLoader(this)::saveWebPort);
         coreConfig.webPort = port;
-        getLogger().info("WebUI listening on http://" + coreConfig.webHost + ":" + webServer.port());
+        getLogger().info("WebUI listening on http://" + org.wannes.plugmodcore.network.DevelopmentAccess.host(coreConfig.developmentMode,coreConfig.webHost) + ":" + webServer.port());
     }
 
     /* =========================
@@ -144,15 +157,16 @@ public class PlugModCore extends JavaPlugin {
     }
 
     private void startWebServer() {
+        if(getListeningWebPort()>=0)return;
         try {
             // Ensure packaged web assets are deployed into the plugin data folder and overwritten
             deployWebAssets();
 
-            webServer = new org.wannes.plugModCore.web.WebListenerLifecycle(port -> new WebServer(this, coreConfig.webHost, port));
-            webServer.change(coreConfig.webPort, port -> {});
+            if(webServer==null)webServer = new org.wannes.plugModCore.web.WebListenerLifecycle(port -> new WebServer(this, coreConfig.webHost, port));
+            if(allocateNewWebPort){var allocated=org.wannes.plugmodcore.network.ManagementPorts.allocate(0,true,port->{try{webServer.change(port,new ConfigLoader(this)::saveWebPort);return port;}catch(IOException failure){Throwable cause=failure;while(cause.getCause()!=null)cause=cause.getCause();if(cause instanceof java.net.BindException)throw (java.net.BindException)cause;throw failure;}});coreConfig.webPort=allocated.port();allocateNewWebPort=false;}else webServer.change(coreConfig.webPort, port -> {});
             getLogger().info(
                     "Webserver gestart op http://" +
-                            coreConfig.webHost + ":" +
+                            org.wannes.plugmodcore.network.DevelopmentAccess.host(coreConfig.developmentMode,coreConfig.webHost) + ":" +
                             webServer.port()
             );
 
@@ -235,6 +249,7 @@ public class PlugModCore extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (network != null) network.close();
         if (webServer != null) {
             webServer.stop();
         }

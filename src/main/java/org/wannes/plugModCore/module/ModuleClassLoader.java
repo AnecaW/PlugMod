@@ -47,7 +47,7 @@ public class ModuleClassLoader extends URLClassLoader {
     }
     @Override
     protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-        if (name.startsWith("org.wannes.plugModCore.api.") || name.startsWith("org.bukkit.") || name.startsWith("io.papermc.paper.") || name.startsWith("net.kyori.") || name.startsWith("java."))
+        if (name.startsWith("org.wannes.plugmodcore.network.") || name.startsWith("org.wannes.plugModCore.api.") || name.startsWith("org.bukkit.") || name.startsWith("io.papermc.paper.") || name.startsWith("net.kyori.") || name.startsWith("java."))
             return getParent().loadClass(name);
         java.util.Set<ModuleClassLoader> owners = new java.util.HashSet<>();
         for (ModuleClassLoader dependency : dependencies) dependency.apiOwners(name, new java.util.HashSet<>(), owners);

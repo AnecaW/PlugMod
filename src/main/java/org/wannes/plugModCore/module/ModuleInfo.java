@@ -8,6 +8,7 @@ public class ModuleInfo {
     public List<String> exports = List.of();
     public List<String> pluginDependencies = List.of();
     public List<String> requiredApiClasses = List.of();
+    public org.wannes.plugmodcore.network.Manifest manifest;
     public java.util.Map<String, String> requiredServices = java.util.Map.of();
 
     /* Identiteit */

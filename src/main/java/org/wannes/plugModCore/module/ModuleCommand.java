@@ -4,12 +4,23 @@ import org.bukkit.command.*;
 import java.util.*;
 
 public final class ModuleCommand implements CommandExecutor, TabCompleter {
-    private static final List<String> ACTIONS = List.of("list", "info", "load", "unload", "enable", "disable", "reload", "webui");
+    private static final List<String> ACTIONS = List.of("list", "info", "load", "unload", "enable", "disable", "reload", "webui", "proxy", "help", "version", "status");
     private final ModuleManager manager;
     private final org.bukkit.plugin.Plugin plugin;
     public ModuleCommand(ModuleManager manager, org.bukkit.plugin.Plugin plugin) { this.manager = manager; this.plugin = plugin; }
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("plugmodcore.manage")) { sender.sendMessage("§cServer Manager: permission denied."); return true; }
+        if(args.length>0&&args[0].equalsIgnoreCase("proxy")){
+            if(!(sender instanceof org.bukkit.command.ConsoleCommandSender)){sender.sendMessage("Local proxy recovery is console-only.");return true;}
+            var core=(org.wannes.plugModCore.PlugModCore)plugin;
+            try{if(core.getNetwork()==null){if(args.length==3&&args[1].equalsIgnoreCase("unlink")){org.wannes.plugModCore.network.PaperNetwork.forceLocalRecovery(core,args[2]);sender.sendMessage("Local network recovery completed; remove the stale proxy record before re-pairing.");return true;}throw new IllegalStateException("Network agent unavailable; use /module proxy unlink UNLINK for secure console recovery");}
+                if(args.length==3&&args[1].equalsIgnoreCase("unlink"))core.getNetwork().localRecovery(args[2]);
+                else if(args.length==3&&args[1].equalsIgnoreCase("enable")&&args[2].equals("PRIVATE_NETWORK")){core.getNetwork().generate(true);sender.sendMessage("Proxy Mode enabled; /module proxy code writes a fresh one-time key to its protected file.");return true;}
+                else if(args.length==2&&args[1].equalsIgnoreCase("code")){sender.sendMessage("One-time code saved to owner-only file: "+core.getNetwork().generatePrivateFile()+". Read it locally/over SSH; it is not logged here.");return true;}
+                else if(args.length!=1)throw new IllegalArgumentException("Usage: /module proxy [enable PRIVATE_NETWORK | code | unlink UNLINK]");
+                sender.sendMessage(core.getNetwork().localStatus().toString());
+            }catch(Exception failure){sender.sendMessage("Proxy operation failed: "+failure.getMessage());}return true;
+        }
         if (args.length > 0 && args[0].equalsIgnoreCase("webui")) {
             if (args.length < 2 || !args[1].equalsIgnoreCase("port") || args.length > 3) {
                 sender.sendMessage("§eUsage: /" + label + " webui port [1-65535]"); return true;
@@ -33,6 +44,9 @@ public final class ModuleCommand implements CommandExecutor, TabCompleter {
             }
             return true;
         }
+        if(args.length==1&&args[0].equalsIgnoreCase("help")){sender.sendMessage("/module list | info/load/unload/enable/disable/reload <id> | status | version | webui port [port] | proxy");return true;}
+        if(args.length==1&&args[0].equalsIgnoreCase("version")){sender.sendMessage("PlugModCore "+plugin.getDescription().getVersion()+" · PAPER "+org.bukkit.Bukkit.getBukkitVersion());return true;}
+        if(args.length==1&&args[0].equalsIgnoreCase("status")){var core=(org.wannes.plugModCore.PlugModCore)plugin;sender.sendMessage("PlugModCore PAPER · WebUI port "+core.getListeningWebPort()+" · modules "+manager.getModules().size());return true;}
         if (args.length == 0 || (args.length == 1 && args[0].equalsIgnoreCase("list"))) {
             sender.sendMessage("§6Server Manager §7— " + manager.getModules().size() + " modules");
             for (ModuleContainer m : manager.getModules()) sender.sendMessage((m.getState() == ModuleState.ENABLED ? "§a" : m.getState() == ModuleState.FAILED ? "§c" : "§7") + m.getInfo().id + " §7" + m.getInfo().version + " — " + m.getState());

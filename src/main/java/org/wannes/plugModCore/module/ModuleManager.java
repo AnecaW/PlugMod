@@ -126,7 +126,7 @@ public class ModuleManager {
         if (!info.valid) throw new IllegalStateException("Invalid replacement metadata: " + info.error);
         if (current == root || current.getClassLoader() == null) files.add(current.getFile());
         for (String id : info.dependencies) {
-            ModuleContainer dependency = findModule(id);
+            ModuleContainer dependency = findDeclaredModule(id);
             if (dependency == null) throw new IllegalStateException("Missing dependency " + id);
             collectReplacementArtifacts(dependency, root, replacement, visited, files);
         }
@@ -176,6 +176,7 @@ public class ModuleManager {
     public void scanModules() {
         mainThread();
         if (operating || stopping) throw new IllegalStateException("Module manager is busy");
+        modules.removeIf(m -> !m.getFile().isFile() && m.getClassLoader()==null && m.getModuleInstance()==null);
         File[] files = modulesDir.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".jar"));
         if (files == null) throw new IllegalStateException("Cannot scan " + modulesDir);
         Arrays.sort(files, Comparator.comparing(File::getName));
@@ -240,14 +241,32 @@ public class ModuleManager {
         plugin.getLogger().log(Level.SEVERE, m.getInternalId() + ": " + operation + " failed", cause);
         return new IllegalStateException(m.getInfo().error, cause);
     }
+    /** Declared IDs are exact, case-sensitive manifest identities; filenames are action aliases only. */
+    public ModuleContainer findDeclaredModule(String id) {
+        return modules.stream().filter(m -> m.getInfo().manifest != null && id.equals(m.getInfo().manifest.id())).findFirst().orElse(null);
+    }
     public ModuleContainer findModule(String id) {
-        return modules.stream().filter(m -> m.getInternalId().equals(id) || (m.getInfo().valid && id.equals(m.getInfo().id))).findFirst().orElse(null);
+        ModuleContainer action=modules.stream().filter(m->m.getInternalId().equals(id)).findFirst().orElse(null);
+        return action!=null?action:findDeclaredModule(id);
+    }
+    public ModuleInfo inspectArtifact(File file) { return readModuleInfo(file); }
+    public List<Map<String,Object>> inspectDependencies(org.wannes.plugmodcore.network.Manifest manifest, boolean required) {
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(String id:manifest.dependencies()) {
+            ModuleContainer dependency=findDeclaredModule(id);
+            String status=dependency==null?"MISSING":!dependency.getInfo().valid?"INCOMPATIBLE":dependency.getClassLoader()==null?"INSTALLED_UNLOADED":dependency.getState().name();
+            if(required&&(dependency==null||!dependency.getInfo().valid))throw new IllegalArgumentException("Module '"+manifest.id()+"': vereiste dependency '"+id+"' "+(dependency==null?"ontbreekt op deze Paper-backend; installeer deze eerst op dezelfde backend":"is niet compatibel op deze Paper-backend: "+dependency.getInfo().error));
+            if(required)order(dependency);
+            result.add(Map.of("id",id,"status",status,"optional",false,"version",dependency==null?"":Objects.toString(dependency.getInfo().version,"")));
+        }
+        for(String id:manifest.optionalDependencies()){ModuleContainer dependency=findDeclaredModule(id);result.add(Map.of("id",id,"status",dependency==null?"MISSING":dependency.getState().name(),"optional",true));}
+        return result;
     }
     public java.util.Optional<org.wannes.plugModCore.api.ModuleStatus> moduleStatus(String name) {
         return modules.stream().filter(m -> m.getInfo().id != null && (m.getInfo().id.equalsIgnoreCase(name) || m.getInfo().name.equalsIgnoreCase(name))).findFirst().map(m -> new org.wannes.plugModCore.api.ModuleStatus(m.getInfo().id, m.getInfo().name, m.getInfo().version, m.getState().name()));
     }
     public boolean dependsOn(String consumer, String provider) {
-        ModuleContainer root = findModule(consumer); ModuleContainer target = findModule(provider);
+        ModuleContainer root = findDeclaredModule(consumer); ModuleContainer target = findDeclaredModule(provider);
         return root != null && target != null && root != target && order(root).contains(target);
     }
     private List<ModuleContainer> order(ModuleContainer root) {
@@ -297,7 +316,7 @@ public class ModuleManager {
         try {
             validateSharedApi(m.getInfo(), plugin.getClass().getClassLoader());
             List<ModuleClassLoader> dependencies = new ArrayList<>();
-            for (String id : m.getInfo().dependencies) dependencies.add(findModule(id).getClassLoader());
+            for (String id : m.getInfo().dependencies) dependencies.add(findDeclaredModule(id).getClassLoader());
             java.nio.file.Path prepared = preparedArtifacts.remove(artifact);
             ModuleClassLoader loader = prepared == null
                     ? new ModuleClassLoader(artifact.toURI().toURL(), plugin.getClass().getClassLoader(), dependencies)
@@ -311,9 +330,9 @@ public class ModuleManager {
             }
             loader.configure(m.getInfo().exports, plugins);
             Class<?> type = loader.loadClass(m.getInfo().mainClass);
-            if (!Module.class.isAssignableFrom(type)) throw new IllegalArgumentException("Main class must implement Module");
+            if (!Module.class.isAssignableFrom(type)&&!org.wannes.plugmodcore.network.PlatformModule.class.isAssignableFrom(type)) throw new IllegalArgumentException("Main class must implement Paper Module or neutral PlatformModule");
             callback(m, () -> {
-                try { m.setModuleInstance((Module) type.getDeclaredConstructor().newInstance()); }
+                try { Object instance=type.getDeclaredConstructor().newInstance();m.setModuleInstance(instance instanceof Module module?module:new SharedModuleAdapter((org.wannes.plugmodcore.network.PlatformModule)instance)); }
                 catch (ReflectiveOperationException e) { throw new IllegalStateException("Cannot construct module", e); }
             });
             m.setContext(new ModuleContextImpl(m, moduleDataDir, plugin, services, this));
@@ -496,6 +515,8 @@ public class ModuleManager {
     private ModuleInfo readModuleInfo(File file) {
         ModuleInfo info = new ModuleInfo();
         try (JarFile jar = new JarFile(file)) {
+            info.manifest = org.wannes.plugmodcore.network.Manifest.read(file.toPath());
+            info.manifest.validate("PAPER", Runtime.version().feature(), 1, List.of(org.wannes.plugModCore.network.ServerRuntime.minecraftVersion()));
             JarEntry entry = jar.getJarEntry("module.info.yml");
             if (entry == null) entry = jar.getJarEntry("resources/module.info.yml");
             if (entry == null) throw new IllegalArgumentException("Missing module.info.yml");

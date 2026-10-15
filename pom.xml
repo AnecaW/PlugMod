@@ -25,6 +25,7 @@
     </properties>
 
     <build>
+        <finalName>PlugModCore-Paper</finalName>
         <defaultGoal>clean package</defaultGoal>
         <plugins>
             <plugin>
@@ -48,6 +49,11 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.5.3</version>
+                <configuration>
+                    <!-- The canonical core JAR owns the shared API at runtime. -->
+                    <shadedArtifactAttached>false</shadedArtifactAttached>
+                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                </configuration>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -73,7 +79,7 @@
         </repository>
     </repositories>
 
-    <dependencies>
+    <dependencies><dependency><groupId>org.wannes</groupId><artifactId>plugmodcore-network</artifactId><version>1.0-SNAPSHOT</version></dependency>
         <dependency>
             <groupId>junit</groupId><artifactId>junit</artifactId><version>4.13.2</version><scope>test</scope>
         </dependency>

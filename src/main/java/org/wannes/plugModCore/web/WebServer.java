@@ -26,12 +26,13 @@ public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listene
     private final PlugModCore plugin;
 
     public WebServer(PlugModCore plugin, String hostname, int port) {
-        super(hostname, port);
+        super(org.wannes.plugmodcore.network.DevelopmentAccess.host(plugin!=null&&plugin.getCoreConfig()!=null&&plugin.getCoreConfig().developmentMode,hostname), port);
         this.plugin = plugin;
     }
 
     public void startServer() throws IOException {
         start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        if(plugin!=null&&org.wannes.plugmodcore.network.DevelopmentAccess.enabled(plugin.getCoreConfig().developmentMode))plugin.getLogger().warning("DEVELOPMENT ONLY: admin/admin login enabled on loopback; never enable on production");
         verifyListener();
     }
 
@@ -67,11 +68,27 @@ public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listene
 
         String uri = session.getUri();
         NanoHTTPD.Method method = session.getMethod();
+        if(method!=NanoHTTPD.Method.GET&&plugin.getNetwork()!=null&&plugin.getNetwork().hasRecentProxyContact()&&!uri.equals("/api/network"))
+            return newFixedLengthResponse(Response.Status.CONFLICT,"text/plain","Backend is controlled by Velocity; use the central WebUI or local console recovery");
+        if(uri.equals("/api/network")){
+            try{if(plugin.getNetwork()==null)return badRequest("Network agent unavailable; inspect startup diagnostics");
+                if(method==NanoHTTPD.Method.GET)return newFixedLengthResponse(Response.Status.OK,"application/json",plugin.getNetwork().localStatus().toString());
+                if(method!=NanoHTTPD.Method.POST)return badRequest("Only GET/POST supported");
+                Map<String,String> body=new HashMap<>();session.parseBody(body);String action=session.getParms().getOrDefault("action","");
+                if(plugin.getNetwork().hasRecentProxyContact()&&!java.util.Set.of("disable","unlink").contains(action))return badRequest("Backend controlled by Velocity; disable Proxy Mode deliberately before changing pairing");
+                if(java.util.Set.of("enable","code","disable","unlink").contains(action)&&!(java.net.InetAddress.getByName(session.getRemoteIpAddress()).isLoopbackAddress()||java.net.InetAddress.getByName(session.getRemoteIpAddress()).isSiteLocalAddress()))return badRequest("Pairing provisioning requires an authenticated private-network client or a locally terminated TLS proxy");
+                Object result=switch(action){case "enable","code" -> Map.of("code",plugin.getNetwork().generate("PRIVATE_NETWORK".equals(session.getParms().get("confirmation")),java.net.URI.create("http://"+session.getHeaders().get("host")).getHost()),"status",plugin.getNetwork().localStatus());case "disable" -> {plugin.getNetwork().disableProxyMode(session.getParms().getOrDefault("confirmation",""));yield plugin.getNetwork().localStatus();}case "revoke" -> {plugin.getNetwork().revoke();yield plugin.getNetwork().localStatus();}case "unlink" -> {plugin.getNetwork().localRecovery(session.getParms().getOrDefault("confirmation",""));yield plugin.getNetwork().localStatus();}default -> throw new IllegalArgumentException("Unknown proxy-mode action");};
+                Response response=newFixedLengthResponse(Response.Status.OK,"application/json",org.wannes.plugmodcore.network.Protocol.JSON.toJson(result));
+                response.addHeader("Cache-Control","no-store");
+                return response;
+            }catch(Exception failure){return badRequest(failure.getMessage());}
+        }
 
         if (uri.equals("/") && method == NanoHTTPD.Method.GET) return showDashboard();
         if (uri.equals("/modules") && method == NanoHTTPD.Method.GET) return listModules();
         if (uri.equals("/api/modules") && method == NanoHTTPD.Method.GET) return listModulesJson();
         if (uri.equals("/modules/upload") && method == NanoHTTPD.Method.POST) return handleModuleUpload(session);
+        if(uri.equals("/modules/validate")&&method==NanoHTTPD.Method.POST){try{Map<String,String> files=new HashMap<>();session.parseBody(files);String file=files.get("file");if(file==null)return badRequest("Select a module JAR");var manifest=org.wannes.plugmodcore.network.Manifest.read(java.nio.file.Path.of(file));manifest.validate("PAPER",Runtime.version().feature(),1,java.util.List.of(org.wannes.plugModCore.network.ServerRuntime.minecraftVersion()));return newFixedLengthResponse(Response.Status.OK,"application/json",org.wannes.plugmodcore.network.Protocol.JSON.toJson(manifest));}catch(Exception e){return badRequest(e.getMessage());}}
 
         if (uri.startsWith("/modules/load/") && method == NanoHTTPD.Method.POST) return loadModule(uri);
         if (uri.startsWith("/modules/unload/") && method == NanoHTTPD.Method.POST) return unloadModule(uri);
@@ -97,8 +114,9 @@ public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listene
         else if (header.startsWith("Basic ")) {
             try {
                 String credentials = new String(java.util.Base64.getDecoder().decode(header.substring(6)), StandardCharsets.UTF_8);
+                if(org.wannes.plugmodcore.network.DevelopmentAccess.accepts(plugin.getCoreConfig().developmentMode,java.net.InetAddress.getByName(getHostname()),java.net.InetAddress.getByName(session.getRemoteIpAddress()),credentials.split(":",2)[0],credentials.contains(":")?credentials.substring(credentials.indexOf(':')+1):""))return true;
                 if (credentials.startsWith("admin:")) supplied = credentials.substring(6);
-            } catch (IllegalArgumentException e) { return false; }
+            } catch (Exception e) { return false; }
         }
         return java.security.MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8));
     }
@@ -112,6 +130,7 @@ public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listene
                 return newFixedLengthResponse(Response.Status.OK, "text/html", "<h1>PlugModCore Dashboard</h1><p>Resource missing</p>");
             }
             String s = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            if(org.wannes.plugmodcore.network.DevelopmentAccess.enabled(plugin.getCoreConfig().developmentMode))s=s.replace("<body>","<body><p role=\"alert\">Ontwikkelmodus: admin/admin — uitsluitend lokale sandbox</p>");
             return newFixedLengthResponse(Response.Status.OK, "text/html", s);
         } catch (Exception e) {
             e.printStackTrace();
@@ -136,6 +155,9 @@ public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listene
             if (tempPath == null) return badRequest("Upload mislukt: geen bestand gevonden");
 
             File tempFile = new File(tempPath);
+            var manifest=org.wannes.plugmodcore.network.Manifest.read(tempFile.toPath());
+            manifest.validate("PAPER",Runtime.version().feature(),1,java.util.List.of(org.wannes.plugModCore.network.ServerRuntime.minecraftVersion()));
+            for(String dependency:manifest.dependencies())if(plugin.getModuleManager().findModule(dependency)==null)return badRequest(manifest.id()+" requires missing dependency "+dependency);
             if (!tempFile.exists()) return badRequest("Upload mislukt: tijdelijk bestand niet gevonden");
 
             // original filename from parms (multipart parser usually sets the field value to filename)
@@ -447,7 +469,7 @@ public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listene
         }
     }
 
-    private String resolveModuleWebsiteEntry(ModuleContainer container, String path) {
+    public static String resolveModuleWebsiteEntry(ModuleContainer container, String path) {
         String websiteEntry = container.getInfo() != null ? container.getInfo().websiteEntry : null;
         if (websiteEntry == null || websiteEntry.isBlank()) {
             websiteEntry = "web/index.html";
@@ -493,6 +515,7 @@ public class WebServer extends NanoHTTPD implements WebListenerLifecycle.Listene
             sb.append("\"internalId\":\"").append(jsonEscape(m.getInternalId())).append("\"");
             sb.append(",\"fileName\":\"").append(jsonEscape(m.getFileName())).append("\"");
             sb.append(",\"state\":\"").append(jsonEscape(String.valueOf(m.getState()))).append("\"");
+            sb.append(",\"compatibility\":").append(org.wannes.plugmodcore.network.Protocol.JSON.toJson(m.getInfo().manifest));
             sb.append(",\"loaded\":").append(m.getModuleInstance() != null);
             sb.append(",\"version\":\"").append(jsonEscape(info != null ? info.version : null)).append("\"");
 

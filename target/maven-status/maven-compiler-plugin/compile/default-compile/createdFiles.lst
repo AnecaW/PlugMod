@@ -1,11 +1,14 @@
 org\wannes\plugModCore\module\ModuleContainer.class
 org\wannes\plugModCore\web\routes\UploadRoute.class
 org\wannes\plugModCore\util\YamlUtils.class
+org\wannes\plugModCore\module\SharedModuleAdapter.class
 org\wannes\plugModCore\module\ModuleServiceRegistry.class
 org\wannes\plugModCore\module\ModuleContextImpl$1Registration.class
 org\wannes\plugModCore\module\ModuleContextImpl$ServiceCall.class
 org\wannes\plugModCore\module\ModuleCommand.class
+org\wannes\plugModCore\network\ServerRuntime.class
 org\wannes\plugModCore\config\ConfigLoader.class
+org\wannes\plugModCore\network\ForwardingAdapter.class
 org\wannes\plugModCore\web\WebListenerLifecycle$PortWriter.class
 org\wannes\plugModCore\web\routes\RootRoute.class
 org\wannes\plugModCore\web\WebListenerLifecycle.class
@@ -13,6 +16,7 @@ org\wannes\plugModCore\security\RegistryManager.class
 org\wannes\plugModCore\security\VerificationStatus.class
 org\wannes\plugModCore\util\HashUtils.class
 org\wannes\plugModCore\module\ModuleManager$PendingStage.class
+org\wannes\plugModCore\network\ForwardingAdapter$Support.class
 org\wannes\plugModCore\web\WebListenerLifecycle$Factory.class
 org\wannes\plugModCore\security\PublicKeyRegistry.class
 org\wannes\plugModCore\util\JarUtils.class
@@ -23,9 +27,11 @@ org\wannes\plugModCore\PlugModCore.class
 org\wannes\plugModCore\util\FileUtils.class
 org\wannes\plugModCore\config\SecurityConfig.class
 org\wannes\plugModCore\module\ModuleState.class
+org\wannes\plugModCore\network\PaperNetwork.class
 org\wannes\plugModCore\web\WebServer.class
 org\wannes\plugModCore\web\WebListenerLifecycle$Listener.class
 org\wannes\plugModCore\security\SecurityManager.class
+org\wannes\plugModCore\module\SharedModuleAdapter$1.class
 org\wannes\plugModCore\module\ModuleContextImpl$RegisteredModuleCommand.class
 org\wannes\plugModCore\module\ModuleServiceRegistry$Entry.class
 org\wannes\plugModCore\util\IdUtils.class
@@ -34,3 +40,4 @@ org\wannes\plugModCore\config\CoreConfig.class
 org\wannes\plugModCore\web\routes\ModuleRoute.class
 org\wannes\plugModCore\security\VerificationResult.class
 org\wannes\plugModCore\module\ModuleInfo.class
+org\wannes\plugModCore\network\PaperNetwork$Installation.class

@@ -56,6 +56,7 @@ public class ModuleManagerTest {
             case "getLogger" -> Logger.getLogger("test-server");
             case "getName" -> "test";
             case "getVersion" -> "test (MC: 1.21.11)";
+            case "getMinecraftVersion" -> "1.21.11";
             case "getBukkitVersion" -> "1.21.11-R0.1-SNAPSHOT";
             case "getCommandMap" -> commands;
             case "getPluginManager" -> plugins;
@@ -108,11 +109,17 @@ public class ModuleManagerTest {
                 jar.write(Files.readAllBytes(file)); jar.closeEntry();
             }
             jar.putNextEntry(new JarEntry("module.info.yml"));
-            jar.write(("id: " + id + "\nname: " + id + "\nversion: 1.0\nmain: fixture.Entry\n" + dependencies).getBytes(StandardCharsets.UTF_8)); jar.closeEntry();
+            jar.write(("id: " + id + "\nname: " + id + "\nversion: '1.0'\nmain: fixture.Entry\n" + dependencies).getBytes(StandardCharsets.UTF_8)); jar.closeEntry();
         }
         return output;
     }
     private ModuleContainer discover(String id) { manager.scanModules(); return manager.findModule(id); }
+    @Test public void velocityAndWrongMinecraftManifestsRejectedBeforeLoading() throws Exception {
+        jar("velocityonly","target-platform: VELOCITY\nsupported-minecraft: ['1.21.11']\n","","","");
+        var wrong=discover("velocityonly");assertFalse(wrong.getInfo().valid);assertTrue(wrong.getInfo().error.contains("selected server runs PAPER"));assertNull(wrong.getModuleInstance());
+        jar("future","target-platform: PAPER\nsupported-minecraft: ['1.22']\n","","","");
+        var future=discover("future");assertFalse(future.getInfo().valid);assertTrue(future.getInfo().error.contains("1.21.11"));assertNull(future.getClassLoader());
+    }
     @Test public void missingSharedApiFailsBeforeInitializationAndRetainsRecoveryState() throws Exception {
         jar("missingapi", "required-api-classes: [org.wannes.plugModCore.api.UnavailableFixture]\n", "", "",
                 "throw new AssertionError(\"must not initialize\");");
@@ -241,7 +248,7 @@ public class ModuleManagerTest {
     @Test public void invalidArtifactsAreIsolated() throws Exception {
         Files.writeString(new File(root, "modules/broken.jar").toPath(), "not a jar");
         try (JarOutputStream jar = new JarOutputStream(new FileOutputStream(new File(root, "modules/invalid.jar")))) {
-            jar.putNextEntry(new JarEntry("module.info.yml")); jar.write("id: ../bad\nmain: fixture.Entry\nversion: 1.0\n".getBytes(StandardCharsets.UTF_8)); jar.closeEntry();
+            jar.putNextEntry(new JarEntry("module.info.yml")); jar.write("id: ../bad\nmain: fixture.Entry\nversion: '1.0'\n".getBytes(StandardCharsets.UTF_8)); jar.closeEntry();
         }
         manager.scanModules();
         assertEquals(2, manager.getModules().size()); for (ModuleContainer m : manager.getModules()) assertEquals(ModuleState.FAILED, m.getState());
@@ -423,5 +430,18 @@ public class ModuleManagerTest {
         manager.unloadModule(module);
     }
 
+    @Test public void uploadDependenciesUseDeclaredIdsRegardlessOfArtifactFilenameAndLoadWhenUnloaded()throws Exception {
+        File provider=jar("placeholderapi","","","","");java.nio.file.Files.move(provider.toPath(),provider.toPath().resolveSibling("PlaceholderAPI-1.0.jar"));File consumer=jar("scoreboard","dependencies: [placeholderapi]\n","","","");manager.scanModules();
+        var manifest=org.wannes.plugmodcore.network.Manifest.read(consumer.toPath());assertEquals("INSTALLED_UNLOADED",manager.inspectDependencies(manifest,true).get(0).get("status"));manager.loadModule(manager.findDeclaredModule("scoreboard"));assertNotNull(manager.findDeclaredModule("placeholderapi").getClassLoader());assertEquals("DISABLED",manager.inspectDependencies(manifest,true).get(0).get("status"));
+    }
+    @Test public void uploadInspectionReportsMissingAndOptionalDependenciesWithoutBypassingInstallChecks()throws Exception {
+        File consumer=jar("scoreboard","dependencies: [placeholderapi]\noptional-dependencies: [optional]\n","","","");manager.scanModules();var manifest=org.wannes.plugmodcore.network.Manifest.read(consumer.toPath());assertEquals("MISSING",manager.inspectDependencies(manifest,false).get(0).get("status"));assertEquals(true,manager.inspectDependencies(manifest,false).get(1).get("optional"));assertTrue(assertThrows(IllegalArgumentException.class,()->manager.inspectDependencies(manifest,true)).getMessage().contains("placeholderapi"));jar("placeholderapi","","","","");manager.scanModules();assertEquals(2,manager.inspectDependencies(manifest,true).size());
+    }
+    @Test public void actionFilenameCannotShadowAnotherModulesDeclaredIdentity()throws Exception {
+        File wrong=jar("unrelated","","","","");File real=jar("placeholderapi","","","","");java.nio.file.Files.move(real.toPath(),real.toPath().resolveSibling("provider.jar"));java.nio.file.Files.move(wrong.toPath(),wrong.toPath().resolveSibling("placeholderapi.jar"));manager.scanModules();assertEquals("unrelated",manager.findModule("placeholderapi").getInfo().id);assertEquals("provider",manager.findDeclaredModule("placeholderapi").getInternalId());jar("consumer","dependencies: [placeholderapi]\n","","","");manager.scanModules();manager.loadModule(manager.findDeclaredModule("consumer"));assertNotNull(manager.findDeclaredModule("placeholderapi").getClassLoader());assertNull(manager.findDeclaredModule("unrelated").getClassLoader());
+    }
+    @Test public void incompatibleInstalledDependencyIsNotReportedAsMissing()throws Exception {
+        jar("placeholderapi","api-version: 2\n","","","");File consumer=jar("scoreboard","dependencies: [placeholderapi]\n","","","");manager.scanModules();var manifest=org.wannes.plugmodcore.network.Manifest.read(consumer.toPath());assertEquals("INCOMPATIBLE",manager.inspectDependencies(manifest,false).get(0).get("status"));assertTrue(assertThrows(IllegalArgumentException.class,()->manager.inspectDependencies(manifest,true)).getMessage().contains("niet compatibel"));
+    }
 }
 

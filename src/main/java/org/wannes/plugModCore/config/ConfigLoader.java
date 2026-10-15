@@ -28,6 +28,7 @@ public class ConfigLoader {
         cfg.allowLiveUpload = yaml.getBoolean("modules.allow-live-upload", true);
 
         cfg.webEnabled = yaml.getBoolean("web.enabled", true);
+        cfg.developmentMode = yaml.getBoolean("development.enabled", false);
         cfg.webHost = yaml.getString("web.host", "0.0.0.0");
         cfg.webPort = yaml.getInt("web.port", 8080);
         if (cfg.webPort < 1 || cfg.webPort > 65535) throw new IllegalArgumentException("web.port must be between 1 and 65535");

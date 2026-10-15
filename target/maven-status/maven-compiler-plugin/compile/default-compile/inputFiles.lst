@@ -9,6 +9,10 @@ D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleManager.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleServiceRegistry.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\ModuleState.java
+D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\module\SharedModuleAdapter.java
+D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\network\ForwardingAdapter.java
+D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\network\PaperNetwork.java
+D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\network\ServerRuntime.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\PlugModCore.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\security\PublicKeyRegistry.java
 D:\wanne\Desktop\ServerManager\PlugModCore\src\main\java\org\wannes\plugModCore\security\RegistryManager.java

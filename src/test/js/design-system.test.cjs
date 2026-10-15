@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const root=path.resolve(__dirname,'../../../..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 test('every product entry loads the shared theme before feature CSS',()=>{
- const pages=['PlugModCore/src/main/resources/web/dashboard.html','PlugModCore/src/main/resources/web/index.html','PlugModCore/src/main/resources/web/modules.html',...['CustomCommands','PlaceholderAPI','PluginManager','ScoreBoard','TemplateModule'].map(m=>`Modules/${m}/src/main/resources/web/index.html`)];
+ const pages=['PlugModCore/src/main/resources/web/dashboard.html','PlugModCore/src/main/resources/web/index.html','PlugModCore/src/main/resources/web/modules.html','PlugModCore-Velocity/src/main/resources/web/network.html',...['CustomCommands','PlaceholderAPI','CommandPanels','ScoreBoard','TemplateModule'].map(m=>`Modules/${m}/src/main/resources/web/index.html`)];
  for(const page of pages){const html=read(page);assert.equal((html.match(/href="\/web\/design-system.css"/g)||[]).length,1,page);const links=[...html.matchAll(/<link[^>]+rel="stylesheet"[^>]*>/g)];assert.match(links[0][0],/design-system.css/,page);assert.match(html,/name="viewport"/,page);}
 });
 test('product rename preserves module and storage identities',()=>{

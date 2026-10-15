@@ -25,12 +25,16 @@ PlugModCore is a modular Minecraft server core with a web dashboard for module m
 ### 1. Build
 
 ```bash
-mvn -DskipTests clean package
+# From the repository root (builds the API and core together):
+mvn clean verify
 ```
 
 ### 2. Install
 
-- Copy the generated PlugModCore jar into your server `plugins/` folder.
+- Copy only `PlugModCore/target/PlugModCore-Paper.jar` into your Paper server `plugins/` folder.
+- Never copy `plugmodcore-api-*.jar` or `original-plugmodcore-*.jar` there. The API is a developer library embedded in the shaded core, not a Paper plugin.
+- Put module JARs in `plugins/PlugModCore/modules/`, not directly in `plugins/`.
+- Keep the existing `plugins/PlugModCore/` data and configuration directory when updating.
 - Start your server.
 
 ### 3. Open dashboard

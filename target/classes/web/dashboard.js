@@ -3,6 +3,7 @@
 */
 (function(){
   if(window.pmDashboardBound) return; window.pmDashboardBound = true;
+  const transport=window.pmDashboardTransport;const request=(path,options)=>transport?transport.fetch(path,options):fetch(path,options);
   /* ===== State ===== */
   let modules = [];
   let currentModuleIndex = null;
@@ -33,10 +34,11 @@
 
   /* ===== API helpers ===== */
   async function fetchModules(){
+    if(transport&&!transport.active())return;
     const revision = ++fetchRevision;
     try{
       // preserve currently selected module id so detail view stays in sync
-      const res = await fetch('/api/modules',{cache:'no-store'});
+      const res = await request('/api/modules',{cache:'no-store'});
       if(!res.ok) throw new Error('Kon modules niet laden');
       const list = await res.json();
       if(revision !== fetchRevision) return;
@@ -55,13 +57,14 @@
       if (currentModuleIndex != null) {
         renderModuleTopbar();
       }
-    }catch(e){ console.error(e); const c = document.getElementById('modules'); if(c) c.innerHTML = '<div class="muted">Fout bij laden modules</div>'; }
+    }catch(e){ if(transport&&e.name==='AbortError')return;console.error(e); const c = document.getElementById('modules'); if(c) c.innerHTML = '<div class="muted">Fout bij laden modules</div>'; }
   }
 
-  async function waitForModuleState(id, expectedState, timeoutMs=7000, intervalMs=300){
+  async function waitForModuleState(id, expectedState, timeoutMs=7000, intervalMs=300, contextToken=transport?.contextToken()){
     const start = Date.now();
     while(Date.now()-start < timeoutMs){
-      try{ const res = await fetch('/api/modules',{cache:'no-store'}); if(res.ok){ const list = await res.json(); const m = list.find(x=>x.internalId===id); if(expectedState===null){ if(!m) return true; } else { if(m && m.state===expectedState) return true; } } }catch(e){}
+      if(transport&&!transport.isCurrent(contextToken))return false;
+      try{ const res = await request('/api/modules',{cache:'no-store'}); if(res.ok){ const list = await res.json(); const m = list.find(x=>x.internalId===id); if(expectedState===null){ if(!m) return true; } else { if(m && m.state===expectedState) return true; } } }catch(e){}
       await new Promise(r=>setTimeout(r, intervalMs));
     }
     return false;
@@ -69,25 +72,28 @@
 
   async function postAction(path, expectedState, moduleId){
     if(!moduleId || pendingActions.has(moduleId)) return;
+    const contextToken=transport?.contextToken();
     const selected = modules.find(m=>m.internalId === moduleId);
     if(!selected) return;
     pendingActions.add(moduleId); renderModules(); if(currentModuleIndex != null) renderModuleTopbar();
     try{
-      const res = await fetch(path, {method:'POST'});
+      const res = await request(path, {method:'POST'});
       if(!res.ok){ const txt = await res.text(); throw new Error(txt||'Actie mislukt'); }
+      if(transport&&!transport.isCurrent(contextToken))return;
       showToast('info', selected.name + ': ' + path.split('/')[2] + ' completed');
 
       if(moduleId && typeof expectedState === 'string'){
-        const ok = await waitForModuleState(moduleId, expectedState);
+        const ok = await waitForModuleState(moduleId, expectedState,7000,300,contextToken);
+        if(transport&&!transport.isCurrent(contextToken))return;
         if(!ok){ await fetchModules(); showToast('info','Actie voltooid maar status-update vertraagd.'); return; }
         await fetchModules(); return;
       }
 
-      if(moduleId && expectedState === null){ await waitForModuleState(moduleId, null); await fetchModules(); return; }
+      if(moduleId && expectedState === null){ await waitForModuleState(moduleId, null,7000,300,contextToken); await fetchModules(); return; }
 
       await fetchModules();
     }catch(err){ showToast('error',selected.name + ': '+err.message); }
-    finally { pendingActions.delete(moduleId); renderModules(); if(currentModuleIndex != null) renderModuleTopbar(); }
+    finally { if(transport&&!transport.isCurrent(contextToken))return;pendingActions.delete(moduleId); renderModules(); if(currentModuleIndex != null) renderModuleTopbar(); }
   }
 
   /* ===== Rendering ===== */
@@ -145,7 +151,7 @@
   /* ===== Module website loader ===== */
   function loadModuleWebsite(){ const m = modules[currentModuleIndex]; const frame = document.getElementById('moduleFrame'); const content = document.getElementById('moduleContent'); if(!m||!content||!frame) return;
     const entry = (m.websiteEntry && m.websiteEntry.trim().length > 0) ? m.websiteEntry.trim() : 'web/index.html';
-    frame.src = '/modules/website/'+encodeURIComponent(m.internalId)+'/?entry='+encodeURIComponent(entry);
+    frame.src = transport?transport.moduleUrl(m.internalId,entry):'/modules/website/'+encodeURIComponent(m.internalId)+'/?entry='+encodeURIComponent(entry);
     // ensure iframe is visible (in case previous code replaced innerHTML)
     content.classList.remove('muted');
   }
@@ -153,15 +159,19 @@
   /* ===== Upload ===== */
   async function uploadFiles(){
     const input = document.getElementById('fileInput'); const btn = document.getElementById('uploadBtn'); if(!input||!input.files.length){ showToast('info','Kies eerst een bestand'); return; }
-    const files = Array.from(input.files); btn.disabled = true; btn.innerText = 'Uploading...';
+    const contextToken=transport?.contextToken();
+    const files = Array.from(input.files); btn.disabled = true; btn.innerText = 'Module wordt geüpload...';window.pmUploadProgress=message=>{if(!transport||transport.isCurrent(contextToken))btn.innerText=message;};
     try{
+      for(const file of files){if(transport&&!transport.isCurrent(contextToken))return;const preview=new FormData();preview.append('file',file,file.name);const checked=await request('/modules/validate',{method:'POST',body:preview});if(!checked.ok)throw new Error(await checked.text());const manifest=await checked.json();if(transport&&!transport.isCurrent(contextToken))return;if(!confirm((manifest.existing?'Bestaande module bijwerken op deze backend? Ontlaad deze eerst.':transport?'Install on this selected runtime?':'Install on this Paper server?')+'\n'+JSON.stringify(manifest,null,2)))return;}
+      if(transport&&!transport.isCurrent(contextToken))return;
       const fd = new FormData(); files.forEach(f=>fd.append('file', f, f.name));
-      const res = await fetch('/modules/upload', { method: 'POST', body: fd });
+      const res = await request('/modules/upload', { method: 'POST', body: fd });
       if(!res.ok){ const txt = await res.text(); throw new Error(txt || 'Upload mislukt'); }
-      try{ const info = await res.json(); if(info && info.id) showToast('success','Upload voltooid (id: '+info.id+')'); else showToast('success','Upload voltooid'); }catch(e){ showToast('success','Upload voltooid'); }
+      try{ const info = await res.json();if(info?.results){for(const result of info.results)showToast(result.loaded===false?'error':'success',result.id+': '+(result.loaded===false?(result.restoredPrevious?'Bijwerken mislukt; vorige module behouden: ':'Module geïnstalleerd, maar laden mislukt: ')+result.error:result.loaded?'Module geïnstalleerd en geladen.':'Module geïnstalleerd.'));if(info.results.some(result=>result.loaded===false)){await fetchModules();return;}} else  if(info && info.id) showToast('success','Upload voltooid (id: '+info.id+')'); else showToast('success','Upload voltooid'); }catch(e){ showToast('success','Upload voltooid'); }
+      if(transport&&!transport.isCurrent(contextToken))return;
       input.value = ''; await fetchModules(); goHome();
     }catch(err){ alert('Upload mislukt: '+err.message); }
-    finally{ btn.disabled = false; btn.innerText = 'Upload'; }
+    finally{ window.pmUploadProgress=null;btn.disabled = false; btn.innerText = 'Module uploaden'; }
   }
 
   document.addEventListener('DOMContentLoaded', ()=>{ document.getElementById && document.getElementById('uploadBtn') && document.getElementById('uploadBtn').addEventListener('click', uploadFiles); fetchModules();
@@ -195,6 +205,7 @@
 
   // expose for debugging if needed
   window.pm_fetchModules = fetchModules;
+  window.pmDashboardContextChanged = function(){fetchRevision++;modules=[];currentModuleIndex=null;pendingActions.clear();const frame=document.getElementById('moduleFrame');if(frame)frame.src='about:blank';goHome();renderModules();fetchModules();};
 })();
 
 /* ===== Toast helper (global) ===== */
